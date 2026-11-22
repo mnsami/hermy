@@ -67,7 +67,8 @@ You need:
 - Tracker MCP server, enabled and signed in (no tracker CLI needed):
   - GitHub: the Claude Code GitHub plugin, or Copilot CLI's built-in `github-mcp-server`. The signed-in user
     needs write access to the repository and issues. Copilot's server is read-only by default; enable the needed
-    write tools, or pass `--enable-all-github-mcp-tools`.
+    write tools with `githubMcpToolsets` or `enableAllGithubMcpTools` in Copilot's settings, or pass
+    `--enable-all-github-mcp-tools`.
   - GitLab: the Claude Code GitLab plugin, or `https://<host>/api/v4/mcp`.
   - Jira: the Claude Code Atlassian plugin, or `https://mcp.atlassian.com/v2/mcp`.
   The PR check runs `gh` (GitHub) or `curl` (GitLab) inside CI.
