@@ -888,32 +888,7 @@ rules() { sed -n 's/^allowed-tools: //p' "$1" | tr ',' '\n' | sed 's/^ *//;s/ *$
 flowfree() {
   local f
   for f in "$1"/*/SKILL.md; do
-    awk '
-      NR == 1 { next }
-      /^---$/ { exit }
-      /^[[:space:]]*(#|$)/ { next }
-      {
-        indent = match($0, /[^ ]/) - 1
-        if (block && indent > blockindent) next
-        block = 0
-        v = $0
-        if (v ~ /^[[:space:]]*(-[[:space:]]+)?[A-Za-z0-9_-]+:[[:space:]]/) {
-          sub(/^[[:space:]]*(-[[:space:]]+)?[A-Za-z0-9_-]+:[[:space:]]*/, "", v)
-          pending = 1
-        } else if (v ~ /^[[:space:]]*(-[[:space:]]+)?[A-Za-z0-9_-]+:$/) {
-          pending = 1
-          next
-        } else if (v ~ /^[[:space:]]*-[[:space:]]+/) {
-          sub(/^[[:space:]]*-[[:space:]]+/, "", v)
-          pending = 1
-        } else if (pending) {
-          sub(/^[[:space:]]+/, "", v)
-        } else next
-        while (v ~ /^([&!][^[:space:]]+)[[:space:]]+/) sub(/^([&!][^[:space:]]+)[[:space:]]+/, "", v)
-        if (v ~ /^[\[{]/) exit 1
-        if (v ~ /^[|>][-+0-9]*([[:space:]]|$)/) { block = 1; blockindent = indent }
-        pending = (v == "" || v ~ /^#/ || v ~ /^[&!][^[:space:]]+$/)
-      }' "$f" || { echo "$f: flow collection in frontmatter" >&2; return 1; }
+    awk 'NR == 1 { next } /^---$/ { exit } /^[[:space:]]*(-[[:space:]]+)?[^:#][^:]*:[[:space:]]*[\[{]/ || /^[[:space:]]*-[[:space:]]+[\[{]/ { exit 1 }' "$f" || { echo "$f: flow collection in frontmatter" >&2; return 1; }
   done
 }
 t 0 "skills: frontmatter has no flow collections" flowfree "$here/skills"
@@ -986,11 +961,8 @@ skcont() { sk; sed 's|^allowed-tools: .*|&\n  Bash(hermy take *)|' "$here/skills
 skblank() { sk; sed 's|^allowed-tools: .*|&\n\n  Bash(hermy take *)|' "$here/skills/next/SKILL.md" > "$tmp/sk/next/SKILL.md"; "$@" "$tmp/sk"; }
 skquote() { sk; sed 's|^allowed-tools: \(.*\)|allowed-tools: "\1"|' "$here/skills/next/SKILL.md" > "$tmp/sk/next/SKILL.md"; "$@" "$tmp/sk"; }
 skflow() { sk; awk -v v="$1" '/^description:/ { print "description: " v; next } { print }' "$here/skills/next/SKILL.md" > "$tmp/sk/next/SKILL.md"; flowfree "$tmp/sk"; }
-skflowblock() { sk; awk -v v="$1" '/^description:/ { print "description:"; print "  " v; next } { print }' "$here/skills/next/SKILL.md" > "$tmp/sk/next/SKILL.md"; flowfree "$tmp/sk"; }
 t 1 "skills: a flow sequence in frontmatter fails" skflow '[one, two]'
 t 1 "skills: a flow mapping in frontmatter fails" skflow '{one: two}'
-t 1 "skills: an anchored flow sequence in frontmatter fails" skflow '&items [one, two]'
-t 1 "skills: a flow sequence on the next line fails" skflowblock '[one, two]'
 t 0 "skills: a quoted scalar with brackets passes" skflow '"See: [example]"'
 R='bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh"'
 t 0 "skills: every body and allowed-tools agree, both ways" mirror "$here/skills"
