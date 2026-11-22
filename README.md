@@ -64,12 +64,31 @@ You need:
 - `jj` ([Jujutsu](https://jj-vcs.github.io)), only for `worktree: jj`. The default, `worktree: git`, needs nothing more.
   `/hermy:onboard` installs a missing `jq` or `jj` through a shell command you allow. Declining `jq` stops it.
   `jj` has no apt-get package, so there it names the install page.
-- For GitHub, GitLab or Jira: the GitHub, GitLab or Atlassian plugin, enabled and signed in.
-  Its MCP tools reach the tracker, so none needs a CLI. The GitHub token must read and write issues and PRs.
+- Tracker MCP server, enabled and signed in (no tracker CLI needed):
+  - GitHub: the Claude Code GitHub plugin, or Copilot CLI's built-in `github-mcp-server`. The signed-in user
+    needs write access to the repository and issues. Copilot's server is read-only by default; enable the needed
+    write tools, or pass `--enable-all-github-mcp-tools`.
+  - GitLab: the Claude Code GitLab plugin, or `https://<host>/api/v4/mcp`.
+  - Jira: the Claude Code Atlassian plugin, or `https://mcp.atlassian.com/v2/mcp`.
   The PR check runs `gh` (GitHub) or `curl` (GitLab) inside CI.
 - GitLab: as shipped, the plugin reaches gitlab.com only. A self-managed instance needs an MCP server
   configured for that instance, whose tools the skills' `allowed-tools` do not pre-approve, so its calls prompt.
   The config names no host.
+
+For Copilot CLI, add the GitLab and/or Atlassian server to `~/.copilot/mcp-config.json`, replacing `<host>`:
+
+```json
+{
+  "mcpServers": {
+    "gitlab": { "type": "http", "url": "https://<host>/api/v4/mcp" },
+    "atlassian": { "type": "http", "url": "https://mcp.atlassian.com/v2/mcp" }
+  }
+}
+```
+
+In interactive Copilot CLI, a skill's `allowed-tools` pre-approves MCP tools only by Copilot's own
+`<server>-<tool>` or `<server>(<tool>)` name, not hermy's Claude-named entries (#415). Headless `-p`
+does not pre-approve them; pass `--allow-tool='<server>(<tool>)'`. Claude Code keeps its existing rules.
 
 ## Quick start
 

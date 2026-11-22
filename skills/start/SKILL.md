@@ -1,8 +1,12 @@
 ---
 name: start
+compatibility: GitHub plugin for Claude Code or Copilot CLI github-mcp-server; GitLab https://<host>/api/v4/mcp; Jira https://mcp.atlassian.com/v2/mcp
 description: Start or continue work on a tracked issue - claim it, think it through with the user, then implement, harden and review it until it is ready to ship
 when_to_use: Use whenever the user asks to start, pick up, work on, fix or implement a GitHub or GitLab issue or Jira ticket (issue 42, ABC-123, an issue URL), or to continue an existing pull request or branch (resolve its conflicts, address review comments, rebase it), before touching any code for it. Pass the bare issue number or Jira key as the argument, followed by onto and another issue to stack the new branch on that issue's branch (issue 22 onto 21). For a pull request, pass the issue it closes, or the PR number when it closes none; for a GitLab merge request, the issue it closes.
-arguments: [issue, onto, base]
+arguments:
+  - issue
+  - onto
+  - base
 allowed-tools: Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/config.sh"), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" status), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" create *), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" claim *), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" state *), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" sweep), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" verify *), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" diff *), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" log *), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" mark *), mcp__plugin_github_github__issue_read, mcp__plugin_github_github__issue_write, mcp__plugin_github_github__pull_request_read, mcp__plugin_github_github__list_pull_requests, mcp__plugin_github_github__get_me, mcp__plugin_github_github__add_issue_comment, mcp__plugin_atlassian_atlassian__getAccessibleAtlassianResources, mcp__plugin_atlassian_atlassian__atlassianUserInfo, mcp__plugin_atlassian_atlassian__getJiraIssue, mcp__plugin_atlassian_atlassian__executeRead, mcp__plugin_atlassian_atlassian__editJiraIssue, mcp__plugin_atlassian_atlassian__transitionJiraIssue, mcp__plugin_atlassian_atlassian__addOrEditJiraIssueComment, mcp__plugin_gitlab_gitlab__get_user, mcp__plugin_gitlab_gitlab__get_work_item, mcp__plugin_gitlab_gitlab__get_merge_request, mcp__plugin_gitlab_gitlab__save_work_item, mcp__plugin_gitlab_gitlab__save_note
 ---
 

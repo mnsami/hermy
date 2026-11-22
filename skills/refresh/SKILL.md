@@ -1,5 +1,6 @@
 ---
 name: refresh
+compatibility: GitHub plugin for Claude Code or Copilot CLI github-mcp-server; GitLab https://<host>/api/v4/mcp; Jira https://mcp.atlassian.com/v2/mcp
 description: Bring every claimed issue worktree up to date with the default branch after a merge, and verify each
 when_to_use: Use when the user asks to refresh, update or rebase the open issues, their branches or the sibling worktrees after a merge, or to bring them up to date with the default branch.
 allowed-tools: Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/config.sh"), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" status), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" sweep), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" refresh *), mcp__plugin_github_github__list_pull_requests, mcp__plugin_gitlab_gitlab__get_work_item, mcp__plugin_gitlab_gitlab__get_merge_request
