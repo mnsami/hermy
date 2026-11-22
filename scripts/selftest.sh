@@ -961,8 +961,10 @@ skcont() { sk; sed 's|^allowed-tools: .*|&\n  Bash(hermy take *)|' "$here/skills
 skblank() { sk; sed 's|^allowed-tools: .*|&\n\n  Bash(hermy take *)|' "$here/skills/next/SKILL.md" > "$tmp/sk/next/SKILL.md"; "$@" "$tmp/sk"; }
 skquote() { sk; sed 's|^allowed-tools: \(.*\)|allowed-tools: "\1"|' "$here/skills/next/SKILL.md" > "$tmp/sk/next/SKILL.md"; "$@" "$tmp/sk"; }
 skflow() { sk; awk -v v="$1" '/^description:/ { print "description: " v; next } { print }' "$here/skills/next/SKILL.md" > "$tmp/sk/next/SKILL.md"; flowfree "$tmp/sk"; }
+skflowitem() { sk; awk '/^description:/ { print; print "examples:"; print "  - [one, two]"; next } { print }' "$here/skills/next/SKILL.md" > "$tmp/sk/next/SKILL.md"; flowfree "$tmp/sk"; }
 t 1 "skills: a flow sequence in frontmatter fails" skflow '[one, two]'
 t 1 "skills: a flow mapping in frontmatter fails" skflow '{one: two}'
+t 1 "skills: a flow sequence as a block item fails" skflowitem
 t 0 "skills: a quoted scalar with brackets passes" skflow '"See: [example]"'
 R='bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh"'
 t 0 "skills: every body and allowed-tools agree, both ways" mirror "$here/skills"
