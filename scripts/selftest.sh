@@ -1225,7 +1225,7 @@ rmdir "$repo/we\"ird"
 # hout <line>: the shim's hermy_out alone on one verdict line, as the hooks
 # run it. A line that is neither verdict refuses, so an ask never loses its
 # permissionDecision.
-hout() { bash -c 'eval "$(sed -n "/^hermy_out() {/,/^}/p" "$1")"; hermy_out "$2"; echo after' _ "$here/scripts/issue.sh" "$1"; }
+hout() { bash -c 'eval "$(sed -n "/^hermy_out() /,/^}/p" "$1")"; hermy_out "$2"; echo after' _ "$here/scripts/issue.sh" "$1"; }
 t 0 "shim: an ask still maps to permissionDecision ask" jq -e '.hookSpecificOutput.permissionDecision == "ask" and .hookSpecificOutput.permissionDecisionReason == "a\"b"' <<<"$(hout '{"hermy":"ask","text":"a\"b"}' | head -n1)"
 t 0 "shim: a note still maps to additionalContext" jq -e '.hookSpecificOutput.additionalContext == "n" and (.hookSpecificOutput | has("permissionDecision") | not)' <<<"$(hout '{"hermy":"note","text":"n"}' | head -n1)"
 t 0 "warn: guard lets an unclaimed worktree through with the message" warned "$repo/.worktrees/77/a.txt"

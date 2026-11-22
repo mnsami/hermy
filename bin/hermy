@@ -685,7 +685,7 @@ if [ "${1-}" = guard ]; then
       # line, is read, so a warning it printed cannot hide an ask.
       r=$((gdl - SECONDS - 1))
       [ "$r" -gt 0 ] || die "the edit guard refuses an edit naming $n paths: too many paths to check in time, $i of them checked when its ${gdl} s deadline passed."
-      o=$(jqh -c --argjson i "$i" '.paths = [.paths[$i]]' <<<"$in" | HERMY_ASK= HERMY_GUARD_BUDGET=$r "$BASH" -p "$src" guard); c=$?
+      o=$(jqh -c --argjson i "$i" '.paths = [.paths[$i]]' <<<"$in" | HERMY_ASK='' HERMY_GUARD_BUDGET=$r "$BASH" -p "$src" guard); c=$?
       [ "$c" -ne 2 ] || exit 2
       [ "$c" -eq 0 ] || die "the edit guard failed on path $((i+1)) of $n (exit $c)"
       if [ -n "$o" ]; then
