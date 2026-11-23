@@ -66,11 +66,12 @@ You need:
   `jj` has no apt-get package, so there it names the install page.
 - Tracker MCP server, enabled and signed in (no tracker CLI needed):
   - GitHub: the Claude Code GitHub plugin, or Copilot CLI's built-in `github-mcp-server`. The signed-in user
-    needs write access to the repository and issues. Copilot's server is read-only by default; enable the needed
-    write tools with `githubMcpToolsets` or `enableAllGithubMcpTools` in Copilot's settings, or pass
-    `--enable-all-github-mcp-tools`.
+    needs write access to the repository and issues. Copilot's server is read-only by default; enable the write
+    tools the skills call with `githubMcpToolsets` in Copilot's settings, limited to `issues`, `pull_requests`
+    and `context`.
   - GitLab: the Claude Code GitLab plugin, or `https://<host>/api/v4/mcp`.
   - Jira: the Claude Code Atlassian plugin, or `https://mcp.atlassian.com/v2/mcp`.
+
   The PR check runs `gh` (GitHub) or `curl` (GitLab) inside CI.
 - GitLab: as shipped, the plugin reaches gitlab.com only. A self-managed instance needs an MCP server
   configured for that instance, whose tools the skills' `allowed-tools` do not pre-approve, so its calls prompt.

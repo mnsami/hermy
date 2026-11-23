@@ -888,7 +888,7 @@ rules() { sed -n 's/^allowed-tools: //p' "$1" | tr ',' '\n' | sed 's/^ *//;s/ *$
 flowfree() {
   local f
   for f in "$1"/*/SKILL.md; do
-    awk 'NR == 1 { next } /^---$/ { exit } /^[[:space:]]*(-[[:space:]]+)?[^:#][^:]*:[[:space:]]*[\[{]/ || /^[[:space:]]*-[[:space:]]+[\[{]/ { exit 1 }' "$f" || { echo "$f: flow collection in frontmatter" >&2; return 1; }
+    awk 'NR == 1 { next } /^---$/ { exit } blk { if (/^[[:space:]]/ || /^$/) next; blk = 0 } /^[[:space:]]*#/ { next } /^[[:space:]]*(-[[:space:]]+)?([^:#[:space:]{[][^:]*:[[:space:]]*)?([&!][^[:space:]]*[[:space:]]+)?[\[{]/ { exit 1 } /^[^[:space:]#][^:]*:[[:space:]]*[|>][-+0-9]*[[:space:]]*$/ { blk = 1 }' "$f" || { echo "$f: flow collection in frontmatter" >&2; return 1; }
   done
 }
 t 0 "skills: frontmatter has no flow collections" flowfree "$here/skills"
@@ -966,6 +966,11 @@ t 1 "skills: a flow sequence in frontmatter fails" skflow '[one, two]'
 t 1 "skills: a flow mapping in frontmatter fails" skflow '{one: two}'
 t 1 "skills: a flow sequence as a block item fails" skflowitem
 t 0 "skills: a quoted scalar with brackets passes" skflow '"See: [example]"'
+t 1 "skills: a flow sequence after an anchor fails" skflow '&a [one, two]'
+t 1 "skills: a flow sequence after a tag fails" skflow '!!seq [one, two]'
+t 0 "skills: a block scalar body with brackets passes" skflow '|\n  Usage: [issue]'
+t 0 "skills: an indented comment with brackets passes" skflow '"x"\n  # note: [x]'
+t 1 "skills: a flow sequence on the line after its key fails" skflow '\n  [one, two]'
 R='bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh"'
 t 0 "skills: every body and allowed-tools agree, both ways" mirror "$here/skills"
 t 0 "skills: no rule pre-approves take or drop" gated "$here/skills"
