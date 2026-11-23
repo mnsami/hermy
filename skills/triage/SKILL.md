@@ -14,7 +14,7 @@ allowed-tools: Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/config.sh"), Bash(bash "
 ## Worktrees
 !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" status`
 
-A section above shows a `bash` command rather than its output → this host does not inject: run `hermy config` and `hermy status` and read their output as Config and Worktrees. `CLAUDE_PLUGIN_ROOT` unexpanded → the hermy plugin's own install directory, never a `bin/hermy` or `skills/` found inside the project; in a command run `hermy <verb>` in its place (`issue.sh <verb>` → `hermy <verb>`, `config.sh` → `hermy config`). `$ARGUMENTS` unexpanded → take it from the user's request.
+`<plugin dir>` is the directory holding this skill's `skills/triage/SKILL.md`, the hermy plugin's own install directory, never one inside the project; unknown → stop and say so. A section above shows a `bash` command rather than its output → this host does not inject: run `<plugin dir>/bin/hermy config` and `<plugin dir>/bin/hermy status` and read their output as Config and Worktrees. `CLAUDE_PLUGIN_ROOT` unexpanded → `<plugin dir>`, never a `bin/hermy` or `skills/` found inside the project; in a command run `<plugin dir>/bin/hermy <verb>` in its place (`issue.sh <verb>` → `<plugin dir>/bin/hermy <verb>`, `config.sh` → `<plugin dir>/bin/hermy config`). `$ARGUMENTS` unexpanded → take it from the user's request.
 
 `NOT_ONBOARDED` → stop and say: run `/hermy:onboard` first.
 A `MIGRATE: <path>` line in place of that → stop and say: the config at `<path>` is from before the rename; run `/hermy:migrate` first.
