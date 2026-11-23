@@ -148,11 +148,14 @@ t 1 "schema: a key added to one copy only fails it" schema "$tmp/onboard.md" "$h
 # inside the project, and stops when unknown, names `<plugin dir>/bin/hermy
 # <verb>` for reading the sections by hand, `CLAUDE_PLUGIN_ROOT` unexpanded as
 # never a `bin/hermy` inside the project, and each variable the skill takes,
-# and holds no bare `hermy <verb>`, which PATH would pick; start's never-list
-# also names `agents/`, where its briefs live. A new skill goes in the table.
+# and holds no bare `hermy <verb>`, which PATH would pick, nor a `bin/hermy
+# <verb>` under anything but `<plugin dir>` (a relative one is the project's);
+# start's never-list also names `agents/`, where its briefs live. A new skill
+# goes in the table.
 pdir="\`<plugin dir>\` is the directory holding this skill's \`skills/"
 pdin='never one inside the project; unknown → stop and say so.'
-fallback() { line=$(grep -F '`CLAUDE_PLUGIN_ROOT` unexpanded' "$1") || return 1; case "$line" in *'`hermy '*) return 1;; esac; for w in "$pdir" "$pdin" "\`<plugin dir>/bin/hermy $2\`" 'never a `bin/hermy`' ${3-}; do case "$line" in *"$w"*) ;; *) return 1;; esac; done; }
+pbin='`<plugin dir>/bin/hermy '
+fallback() { line=$(grep -F '`CLAUDE_PLUGIN_ROOT` unexpanded' "$1") || return 1; rest=${line//"$pbin"/}; case "$rest" in *'`hermy '*|*'bin/hermy '*) return 1;; esac; for w in "$pdir" "$pdin" "\`<plugin dir>/bin/hermy $2\`" 'never a `bin/hermy`' ${3-}; do case "$line" in *"$w"*) ;; *) return 1;; esac; done; }
 for s in 'config status $ARGUMENTS' 'drop status $ARGUMENTS' 'migrate status' 'next status' 'onboard detect' 'refresh status' 'ship status $ARGUMENTS' 'start status $issue $onto $base `agents/`' 'triage status $ARGUMENTS'; do read -r n v a <<< "$s"; t 0 "skill $n carries the fallback for a host that does not inject" fallback "$here/skills/$n/SKILL.md" "$v" "$a"; done
 grep -vF '`CLAUDE_PLUGIN_ROOT` unexpanded' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "a skill that injects without the fallback fails it" fallback "$tmp/next.md" status
@@ -160,6 +163,8 @@ sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s/hermy status/hermy stat/' "$here/skills/
 t 1 "one whose fallback drops the read-by-hand command fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s/\.$/ Or run `hermy status`./' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback runs a bare hermy, which PATH picks, fails it" fallback "$tmp/next.md" status
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`<plugin dir>/bin/hermy config`|`bin/hermy config`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+t 1 "one whose fallback runs a verb by a relative bin/hermy, the project's own, fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`<plugin dir>` is the directory holding this skill'"'"'s `skills/next/SKILL.md`, ||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback drops where the plugin dir is fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|unknown → stop and say so|unknown → guess|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
