@@ -1,5 +1,6 @@
 ---
 name: triage
+compatibility: GitHub plugin for Claude Code or Copilot CLI github-mcp-server; GitLab https://<host>/api/v4/mcp; Jira https://mcp.atlassian.com/v2/mcp
 description: Turn review findings into tracker issues
 when_to_use: Use when the user asks to file, log or create issues or tickets from findings, a review, an audit or a list of problems.
 allowed-tools: Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/config.sh"), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" status), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" state *), mcp__plugin_github_github__search_issues, mcp__plugin_github_github__issue_write, mcp__plugin_atlassian_atlassian__getAccessibleAtlassianResources, mcp__plugin_atlassian_atlassian__atlassianUserInfo, mcp__plugin_atlassian_atlassian__searchJiraIssuesUsingJql, mcp__plugin_atlassian_atlassian__createJiraIssue, mcp__plugin_gitlab_gitlab__list_work_items, mcp__plugin_gitlab_gitlab__save_work_item

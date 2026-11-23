@@ -1,5 +1,6 @@
 ---
 name: next
+compatibility: GitHub plugin for Claude Code or Copilot CLI github-mcp-server; GitLab https://<host>/api/v4/mcp; Jira https://mcp.atlassian.com/v2/mcp
 description: Pick the next issue to work on
 when_to_use: Use when the user asks what to work on next, what is open, or which issue or ticket to pick up.
 allowed-tools: Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/config.sh"), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" status), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" sweep), mcp__plugin_github_github__search_issues, mcp__plugin_github_github__get_me, mcp__plugin_github_github__issue_read, mcp__plugin_atlassian_atlassian__getAccessibleAtlassianResources, mcp__plugin_atlassian_atlassian__getJiraIssue, mcp__plugin_atlassian_atlassian__atlassianUserInfo, mcp__plugin_atlassian_atlassian__searchJiraIssuesUsingJql, mcp__plugin_gitlab_gitlab__get_user, mcp__plugin_gitlab_gitlab__list_work_items, mcp__plugin_gitlab_gitlab__get_work_item

@@ -1,5 +1,6 @@
 ---
 name: onboard
+compatibility: GitHub plugin for Claude Code or Copilot CLI github-mcp-server; GitLab https://<host>/api/v4/mcp; Jira https://mcp.atlassian.com/v2/mcp
 description: Bring the current project into the hermy workflow by writing .hermy.yml
 when_to_use: Use when the user asks to onboard a project or set hermy up in it for the first time, or to continue an onboarding that stopped. Changing a setting later is the config skill.
 allowed-tools: Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect.sh"), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" exclude answers), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" exclude config), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" forget answers), Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh" migrate), Bash(date +%Y%m%d-%H%M%S), mcp__plugin_github_github__get_me, mcp__plugin_gitlab_gitlab__get_project, mcp__plugin_gitlab_gitlab__get_user, mcp__plugin_gitlab_gitlab__get_repository_file, mcp__plugin_gitlab_gitlab__save_merge_request

@@ -885,6 +885,13 @@ wire snap w; echo x > stray.txt; t 2 "hooks: the PostToolUseFailure entry trips 
 # a closed list of rule shapes, and a body may call them without a rule. MCP names drifting upstream is
 # not checked here.
 rules() { sed -n 's/^allowed-tools: //p' "$1" | tr ',' '\n' | sed 's/^ *//;s/ *$//'; }
+flowfree() {
+  local f
+  for f in "$1"/*/SKILL.md; do
+    awk 'NR == 1 { next } /^---$/ { exit } blk { if (/^[[:space:]]/ || /^$/) next; blk = 0 } /^[[:space:]]*#/ { next } /^[[:space:]]*(-[[:space:]]+)?([^:#[:space:]{[][^:]*:[[:space:]]*)?([&!][^[:space:]]*[[:space:]]+)?[\[{]/ { exit 1 } /^[^[:space:]#][^:]*:[[:space:]]*[|>][-+0-9]*[[:space:]]*$/ { blk = 1 }' "$f" || { echo "$f: flow collection in frontmatter" >&2; return 1; }
+  done
+}
+t 0 "skills: frontmatter has no flow collections" flowfree "$here/skills"
 # allowed-tools must be one plain line: a continuation line or a value opening
 # with a quote, >, |, [, {, * or & is a form rules() does not read, so it fails;
 # blank lines are skipped before the indentation test, as YAML folds them in.
@@ -953,6 +960,17 @@ gatedlist() { sk; sed 's|^allowed-tools: .*|allowed-tools:\n  - Bash|' "$here/sk
 skcont() { sk; sed 's|^allowed-tools: .*|&\n  Bash(hermy take *)|' "$here/skills/next/SKILL.md" > "$tmp/sk/next/SKILL.md"; "$@" "$tmp/sk"; }
 skblank() { sk; sed 's|^allowed-tools: .*|&\n\n  Bash(hermy take *)|' "$here/skills/next/SKILL.md" > "$tmp/sk/next/SKILL.md"; "$@" "$tmp/sk"; }
 skquote() { sk; sed 's|^allowed-tools: \(.*\)|allowed-tools: "\1"|' "$here/skills/next/SKILL.md" > "$tmp/sk/next/SKILL.md"; "$@" "$tmp/sk"; }
+skflow() { sk; awk -v v="$1" '/^description:/ { print "description: " v; next } { print }' "$here/skills/next/SKILL.md" > "$tmp/sk/next/SKILL.md"; flowfree "$tmp/sk"; }
+skflowitem() { sk; awk '/^description:/ { print; print "examples:"; print "  - [one, two]"; next } { print }' "$here/skills/next/SKILL.md" > "$tmp/sk/next/SKILL.md"; flowfree "$tmp/sk"; }
+t 1 "skills: a flow sequence in frontmatter fails" skflow '[one, two]'
+t 1 "skills: a flow mapping in frontmatter fails" skflow '{one: two}'
+t 1 "skills: a flow sequence as a block item fails" skflowitem
+t 0 "skills: a quoted scalar with brackets passes" skflow '"See: [example]"'
+t 1 "skills: a flow sequence after an anchor fails" skflow '&a [one, two]'
+t 1 "skills: a flow sequence after a tag fails" skflow '!!seq [one, two]'
+t 0 "skills: a block scalar body with brackets passes" skflow '|\n  Usage: [issue]'
+t 0 "skills: an indented comment with brackets passes" skflow '"x"\n  # note: [x]'
+t 1 "skills: a flow sequence on the line after its key fails" skflow '\n  [one, two]'
 R='bash "${CLAUDE_PLUGIN_ROOT}/scripts/issue.sh"'
 t 0 "skills: every body and allowed-tools agree, both ways" mirror "$here/skills"
 t 0 "skills: no rule pre-approves take or drop" gated "$here/skills"
