@@ -145,7 +145,7 @@ t 1 "schema: a key added to one copy only fails it" schema "$tmp/onboard.md" "$h
 # A skill that injects a script's output says what to do on a host that does
 # not inject or expand. fallback <skill> <verb> [vars]: its fallback line says
 # `<plugin dir>` is the directory holding the skill's own SKILL.md, never one
-# inside the project, and stops when unknown, names `<plugin dir>/bin/hermy
+# inside the project, and stops when unknown or without bin/hermy, names `<plugin dir>/bin/hermy
 # <verb>` for reading the sections by hand, `CLAUDE_PLUGIN_ROOT` unexpanded as
 # never a `bin/hermy` inside the project, and each variable the skill takes,
 # and holds no bare `hermy <verb>`, which PATH would pick, nor a `bin/hermy
@@ -153,7 +153,7 @@ t 1 "schema: a key added to one copy only fails it" schema "$tmp/onboard.md" "$h
 # start's never-list also names `agents/`, where its briefs live. A new skill
 # goes in the table.
 pdir="\`<plugin dir>\` is the directory holding this skill's \`skills/"
-pdin='never one inside the project; unknown → stop and say so.'
+pdin='never one inside the project; unknown, or no `bin/hermy` there → stop and say so.'
 pbin='`<plugin dir>/bin/hermy '
 fallback() { line=$(grep -F '`CLAUDE_PLUGIN_ROOT` unexpanded' "$1") || return 1; rest=${line//"$pbin"/}; case "$rest" in *'`hermy '*|*'bin/hermy '*) return 1;; esac; for w in "$pdir" "$pdin" "\`<plugin dir>/bin/hermy $2\`" 'never a `bin/hermy`' ${3-}; do case "$line" in *"$w"*) ;; *) return 1;; esac; done; }
 for s in 'config status $ARGUMENTS' 'drop status $ARGUMENTS' 'migrate status' 'next status' 'onboard detect' 'refresh status' 'ship status $ARGUMENTS' 'start status $issue $onto $base `agents/`' 'triage status $ARGUMENTS'; do read -r n v a <<< "$s"; t 0 "skill $n carries the fallback for a host that does not inject" fallback "$here/skills/$n/SKILL.md" "$v" "$a"; done
@@ -167,8 +167,10 @@ sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`<plugin dir>/bin/hermy config`|`bin/her
 t 1 "one whose fallback runs a verb by a relative bin/hermy, the project's own, fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`<plugin dir>` is the directory holding this skill'"'"'s `skills/next/SKILL.md`, ||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback drops where the plugin dir is fails it" fallback "$tmp/next.md" status
-sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|unknown → stop and say so|unknown → guess|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|→ stop and say so|→ guess|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback goes on with no plugin dir fails it" fallback "$tmp/next.md" status
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|, or no `bin/hermy` there||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+t 1 "one whose fallback goes on with no bin/hermy in the plugin dir, where PATH would pick another, fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|never a `bin/hermy`|never a copy|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback drops the never-a-bin/hermy clause fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s| or `agents/`||' "$here/skills/start/SKILL.md" > "$tmp/start.md"
@@ -184,10 +186,12 @@ t 0 "onboard names the AGENTS.md begin marker" grep -qF '<!-- hermy:begin -->' "
 t 0 "onboard names the AGENTS.md end marker" grep -qF '<!-- hermy:end -->' "$here/skills/onboard/SKILL.md"
 # The block, read by agents that may have no plugin, runs a bare hermy only
 # once `command -v hermy` names one outside the repository, else points at get.sh.
-agentsmd() { b=$(awk '/^   <!-- hermy:begin -->$/,/^   <!-- hermy:end -->$/' "$1") && case "$b" in *'`command -v hermy`'*'`get.sh`'*) ;; *) return 1;; esac; }
+agentsmd() { b=$(awk '/^   <!-- hermy:begin -->$/,/^   <!-- hermy:end -->$/' "$1") && case "$b" in *'`command -v hermy`'*'absolute path that lies outside this repository, links followed'*'→ stop, never run it'*'`get.sh`'*'own fallback line wins over this block'*) ;; *) return 1;; esac; }
 t 0 "the AGENTS.md block checks command -v hermy before a bare hermy, and names get.sh" agentsmd "$here/skills/onboard/SKILL.md"
 sed 's/`command -v hermy`/`hermy`/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block without the command -v hermy check fails it" agentsmd "$tmp/onboard.md"
+sed 's/ that lies outside this repository, links followed//' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that takes any absolute hermy, one inside the repository included, fails it" agentsmd "$tmp/onboard.md"
 # The name from before the rename (#463): no tracked path holds it, nor any
 # line of a tracked file once the spellings hermy still reads for a project
 # onboarded before it, and the names outside this repository it keeps, are

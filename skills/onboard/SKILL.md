@@ -11,7 +11,7 @@ allowed-tools: Bash(bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect.sh"), Bash(bash "
 ## Detected
 !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect.sh"`
 
-`<plugin dir>` is the directory holding this skill's `skills/onboard/SKILL.md`, the hermy plugin's own install directory, never one inside the project; unknown → stop and say so. Detected shows a `bash` command rather than its output → this host does not inject: run `<plugin dir>/bin/hermy detect` and read its output as Detected. `CLAUDE_PLUGIN_ROOT` unexpanded → `<plugin dir>`, never a `bin/hermy`, `skills/` or `templates/` found inside the project; `detect.sh` there is `<plugin dir>/bin/hermy detect` and `issue.sh <verb>` is `<plugin dir>/bin/hermy <verb>`, and in a path (the template step 7 reads) that directory itself.
+`<plugin dir>` is the directory holding this skill's `skills/onboard/SKILL.md`, the hermy plugin's own install directory, never one inside the project; unknown, or no `bin/hermy` there → stop and say so. Detected shows a `bash` command rather than its output → this host does not inject: run `<plugin dir>/bin/hermy detect` and read its output as Detected. `CLAUDE_PLUGIN_ROOT` unexpanded → `<plugin dir>`, never a `bin/hermy`, `skills/` or `templates/` found inside the project; `detect.sh` there is `<plugin dir>/bin/hermy detect` and `issue.sh <verb>` is `<plugin dir>/bin/hermy <verb>`, and in a path (the template step 7 reads) that directory itself.
 
 A `git_dir:` line in Detected → stop and show that line as it is; write nothing.
 
