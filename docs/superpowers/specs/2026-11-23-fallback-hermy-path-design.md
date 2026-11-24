@@ -6,9 +6,9 @@ On a host that does not inject or expand (Copilot, any agent reading `AGENTS.md`
 
 ## Goals
 
-- Every skill's fallback line runs `<plugin dir>/bin/hermy <verb>` by absolute path, `<plugin dir>` being the directory that holds this skill's `skills/<name>/SKILL.md`, never one inside the project, the two compared physically, links followed. Unknown, or no `bin/hermy` there → stop and say so. That definition and its stop apply only under the fallback conditions, so a host that injects never stops on it. Bare `hermy` is never run from a skill.
-- The `AGENTS.md` block, read by agents that may have no plugin, runs hermy only by the absolute path `command -v hermy` prints, links followed, resolved once, never a bare `hermy`, and only when that path lies outside the repository's root (the main checkout), the checkout the agent runs in and its working directory, each spelled physically, as `HERMY_EXEC` is held. A relative path or one inside → stop, never run it, and tell the user to remove that `PATH` entry or put the install's directory ahead of it; anything else (no output, an alias) or a stale install → stop, never run it, and tell the user to install or update hermy with `get.sh` (the plugin's repository), the user's step, never the agent's.
-- A loaded hermy skill's own fallback line wins over the `AGENTS.md` block.
+- Every skill's fallback line runs `'<plugin dir>/bin/hermy' <verb>` by absolute path, single-quoted, `<plugin dir>` being the directory that holds this skill's `skills/<name>/SKILL.md`, never one inside the project, the main checkout (the parent of `git rev-parse --path-format=absolute --git-common-dir`, spelled with `pwd -P`), nor inside the checkout the agent runs in, each compared physically, links followed. Unknown, or no `bin/hermy` there → stop and say so. That definition and its stop apply only under the fallback conditions, so a host that injects never stops on it. Bare `hermy` is never run from a skill.
+- The `AGENTS.md` block, read by agents that may have no plugin, runs hermy only by the file the absolute path `command -v hermy` prints reaches, resolved once and single-quoted (`'<hermy>' status`), never a bare `hermy`, and only when that path, every link on the way and the file each lie outside the main checkout (the parent of `git rev-parse --path-format=absolute --git-common-dir`, spelled with `pwd -P`), every worktree of the repository (`git worktree list`), the checkout the agent runs in and its working directory, compared by identity (`-ef`) on the directory holding each and every one above it, so a firmlink or bind-mount spelling and an in-repository link to a file outside both stop. A relative path or one inside → stop, never run it, and tell the user to remove that `PATH` entry or put the install's directory ahead of it; anything else (no output, an alias, a command there that fails) → stop, never run it, and tell the user to install or update hermy with `get.sh` (the plugin's repository), the user's step, never the agent's.
+- A hermy skill listed for the session wins over the `AGENTS.md` block: the agent loads it and follows its fallback line.
 - The self-test fails a fallback line that runs bare `hermy <verb>` or drops the plugin-dir path, and an `AGENTS.md` block without the `command -v hermy` check.
 
 ## Non-goals
@@ -16,7 +16,7 @@ On a host that does not inject or expand (Copilot, any agent reading `AGENTS.md`
 - No version check: the plugin's own `bin/hermy` is the plugin's version by construction.
 - No new verb or flag in `bin/hermy`.
 - The Claude Code path (shims by absolute path) is unchanged.
-- Rewriting `AGENTS.md` in projects already onboarded: `onboard` replaces the block on its next run.
+- Rewriting `AGENTS.md` in projects already onboarded: `onboard` stops whenever a config exists, so an existing block stays as it is until the user starts over or pastes the new block.
 
 ## Approaches
 
@@ -25,20 +25,25 @@ On a host that does not inject or expand (Copilot, any agent reading `AGENTS.md`
 
 ## Acceptance
 
-- Every fallback line names `<plugin dir>/bin/hermy` for each verb it runs, says where `<plugin dir>` is, never inside the project, unknown → stop, and carries no backticked bare `hermy <verb>`; the self-test fails without it.
-- The `AGENTS.md` block carries the `command -v hermy` check (absolute, outside the repository, links followed), the stop and the `get.sh` remedy, and says a loaded skill's fallback wins; the self-test fails without it.
+- Every fallback line names `'<plugin dir>/bin/hermy'` for each verb it runs, says where `<plugin dir>` is, never inside the project, unknown → stop, and carries no backticked bare `hermy <verb>`; the self-test fails without it.
+- The `AGENTS.md` block carries the `command -v hermy` check (absolute, outside the main checkout, its links on the way and the file they reach), the stop and the `get.sh` remedy, and says a listed skill's fallback wins; the self-test fails without it.
 - The self-test fails a fallback line with a bare `hermy status`, one without the plugin-dir path, and an `AGENTS.md` block without the `command -v hermy` check.
 - CLAUDE.md's Fact injection paragraph says the same.
 - verify passes.
 - Stage-2 re-run (Copilot, owner-gated): with no plugin `bin/` on `PATH` and a stale install present, `next` runs the plugin's own `bin/hermy`, never the stale one.
 - The `<plugin dir>` definition and its stop apply only under the fallback conditions, so a host that injects never stops on it and `claude --plugin-dir . -p "/hermy:next"` in this repository still runs.
 - Each fallback line's "never inside the project" compares the plugin dir and the project physically, links followed.
-- The `AGENTS.md` block runs the absolute path `command -v hermy` printed, links followed, wherever it runs hermy, never bare `hermy` after the check, and compares it against the repository root spelled physically.
+- The `AGENTS.md` block runs the absolute path `command -v hermy` printed, links followed, wherever it runs hermy, never bare `hermy` after the check, and compares it against the main checkout by identity.
 - The self-test fails a fallback line whose plugin-dir stop sits outside the fallback conditions, one whose `skills/<name>/SKILL.md` names another skill, and an `AGENTS.md` block that runs bare `hermy` after the check.
 - The self-test holds the fallback condition, the `<plugin dir>` definition and its stop as one unbroken string, and fails a line whose stop is moved into a sentence of its own outside the conditions.
-- The `AGENTS.md` block's resolved hermy also lies outside the checkout the agent runs in and outside its working directory, both physically, as `HERMY_EXEC` is held.
-- The `AGENTS.md` block's remedy splits by cause: a relative path or one inside → remove that `PATH` entry or put the install's directory ahead of it; no output or a stale install → tell the user to install or update hermy with `get.sh`, the user's step, never run by the agent.
+- The `AGENTS.md` block's resolved hermy also lies outside the checkout the agent runs in and outside its working directory.
+- The `AGENTS.md` block's remedy splits by cause: a relative path or one inside → remove that `PATH` entry or put the install's directory ahead of it; no output → tell the user to install or update hermy with `get.sh`, the user's step, never run by the agent.
 - CLAUDE.md's Fact injection paragraph says the same as the above, and this document states the shipped behaviour.
+- The block gives the command for the main checkout (the parent of `git rev-parse --path-format=absolute --git-common-dir`, spelled with `pwd -P`), and each fallback line says the project is that main checkout, also held against the checkout the agent runs in.
+- The block holds the path `command -v hermy` printed, every link on the way and the resolved file outside the main checkout, every worktree of the repository (`git worktree list`), the agent's checkout and its working directory, each compared by identity (`-ef`), so a firmlink or bind-mount spelling and an in-repository link to a file outside both stop.
+- The block claims no stop on a stale install, which nothing checks, and gives way to any hermy skill listed for the session, not only a loaded one.
+- Every command a fallback line or the block gives single-quotes the path (`'<plugin dir>/bin/hermy' config`, `'<hermy>' status`).
+- The self-test fails a block missing the main-checkout command, the identity comparison, the worktrees, the links on the way, the listed-skill rule or the quoting, one claiming a stale-install stop, and a fallback line without the quoting or the project definition.
 
 ## Left to the builder
 
