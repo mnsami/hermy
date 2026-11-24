@@ -163,7 +163,8 @@ pq="\`'\` in it written \`'\\''\`"
 pcond='Only where a section above shows a `bash` command rather than its output, or `CLAUDE_PLUGIN_ROOT` is unexpanded: '
 pdin='never one inside the project (the main checkout: the parent of `git rev-parse --path-format=absolute --git-common-dir`, spelled with `pwd -P`) or inside the checkout you run in (`git rev-parse --show-toplevel`), each compared physically, links followed; unknown, or no `bin/hermy` there → stop and say so; either `git rev-parse` failing or printing anything but one absolute path (a jj repository with no `.git`, a git before 2.31) → stop and say git cannot place the project here. Every command below single-quotes `<plugin dir>`, each '"$pq."
 pbin="\`'<plugin dir>/bin/hermy' "
-fallback() { line=$(grep -F '`CLAUDE_PLUGIN_ROOT` unexpanded' "$1") || return 1; rest=${line//"$pbin"/}; case "$rest" in *'`hermy '*|*'bin/hermy '*|*"hermy' "*|*'hermy" '*) return 1;; esac; n=${1%/SKILL.md}; n=${n##*/}; n=${n%.md}; for w in "$pcond\`<plugin dir>\` is the directory holding this skill's \`skills/$n/SKILL.md\`, the hermy plugin's own install directory, $pdin" "\`'<plugin dir>/bin/hermy' $2\`" 'never a `bin/hermy`' ${3-}; do case "$line" in *"$w"*) ;; *) return 1;; esac; done; }
+barehermy() { case "$1" in *'`hermy '*|*'bin/hermy '*|*"hermy' "*|*'hermy"'*|*'./hermy'*|*'exec hermy'*) return 0;; esac; return 1; }
+fallback() { line=$(grep -F '`CLAUDE_PLUGIN_ROOT` unexpanded' "$1") || return 1; rest=${line//"$pbin"/}; barehermy "$rest" && return 1; n=${1%/SKILL.md}; n=${n##*/}; n=${n%.md}; for w in "$pcond\`<plugin dir>\` is the directory holding this skill's \`skills/$n/SKILL.md\`, the hermy plugin's own install directory, $pdin" "\`'<plugin dir>/bin/hermy' $2\`" 'never a `bin/hermy`' ${3-}; do case "$line" in *"$w"*) ;; *) return 1;; esac; done; }
 for s in 'config status $ARGUMENTS' 'drop status $ARGUMENTS' 'migrate status' 'next status' 'onboard detect' 'refresh status' 'ship status $ARGUMENTS' 'start status $issue $onto $base `agents/`' 'triage status $ARGUMENTS'; do read -r n v a <<< "$s"; t 0 "skill $n carries the fallback for a host that does not inject" fallback "$here/skills/$n/SKILL.md" "$v" "$a"; done
 grep -vF '`CLAUDE_PLUGIN_ROOT` unexpanded' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "a skill that injects without the fallback fails it" fallback "$tmp/next.md" status
@@ -177,6 +178,10 @@ sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`'"'"'<plugin dir>/bin/hermy'"'"' config
 t 1 "one whose fallback runs a verb by a quoted relative bin/hermy fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`'"'"'<plugin dir>/bin/hermy'"'"' config`|`"bin/hermy" config`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback runs a verb by a double-quoted bin/hermy fails it" fallback "$tmp/next.md" status
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`'"'"'<plugin dir>/bin/hermy'"'"' config`|`./hermy config`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+t 1 "one whose fallback runs a verb by ./hermy, the working directory's, fails it" fallback "$tmp/next.md" status
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`'"'"'<plugin dir>/bin/hermy'"'"' config`|`exec hermy config`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+t 1 "one whose fallback runs a verb by exec hermy, which PATH picks, fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|'"'"'<plugin dir>/bin/hermy'"'"' |<plugin dir>/bin/hermy |g' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback leaves the plugin-dir path unquoted, which a space, \$ or backtick in it splits or expands, fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`<plugin dir>` is the directory holding this skill'"'"'s `skills/next/SKILL.md`, ||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
@@ -214,58 +219,41 @@ for f in "$here"/skills/*/SKILL.md; do case $f in */onboard/*|*/migrate/*) conti
 t 1 "no skill carries the injection syntax inside a line, which Claude Code would run" grep -qE '.!`' "$here"/skills/*/SKILL.md
 t 0 "onboard names the AGENTS.md begin marker" grep -qF '<!-- hermy:begin -->' "$here/skills/onboard/SKILL.md"
 t 0 "onboard names the AGENTS.md end marker" grep -qF '<!-- hermy:end -->' "$here/skills/onboard/SKILL.md"
-# The block, read by agents that may have no plugin, gives way to any hermy
-# skill listed for the session, whose `<plugin dir>/bin/hermy` is then its
-# `<hermy>`, and runs hermy only once `command -v hermy`
-# prints an absolute path that, with every link on the way and the file it
-# reaches, lies by identity (-ef) outside the main checkout, which it says how
-# to find, every worktree, the checkout the agent runs in and its working
-# directory, and then by that file, single-quoted, a `'` in it written `'\''`,
-# never a bare `hermy <verb>`, which PATH picks again; a relative path or one
-# inside is the user's PATH entry to remove or put behind the install, a git
-# that cannot place the repository (a jj repository with no .git, a git before
-# 2.31) a stop of its own, and no output, an alias or a readlink or pwd -P that
-# fails, alone, the user's own get.sh run, never the agent's; it claims no
-# check it cannot make (a stale install).
-agentsmd() { b=$(awk '/^   <!-- hermy:begin -->$/,/^   <!-- hermy:end -->$/' "$1") && case "$b" in *'`hermy '*|*'`<hermy> '*|*'get it from that repository'*|*'stale install'*|*'loaded hermy skill'*|*'Anything else'*) return 1;; *'A hermy skill listed for this session → load it and follow its fallback line'*'; `<hermy>` below is then `<plugin dir>/bin/hermy`, `<plugin dir>` as that line defines it'*'`command -v hermy`: it must print an absolute path'*'That path, every link on the way to its file (one `readlink` at a time, each read from its own directory) and the file itself'*'every directory above it must match none of these by identity (`[ <dir> -ef <other> ]`), never by spelling'*'the main checkout (the parent of `git rev-parse --path-format=absolute --git-common-dir`, spelled with `pwd -P`)'*'every worktree of this repository (`git worktree list`)'*'the checkout you run in (`git rev-parse --show-toplevel`)'*'and your working directory'*"A relative path, or a match → stop, never run it, and tell the user to remove that \`PATH\` entry or put the install's directory ahead of it"*'A `git` command above that fails, or a `git rev-parse` printing anything but one absolute path (a jj repository with no `.git`, a git before 2.31) → stop, never run it, and tell the user git cannot place this repository here'*'No output, an alias, or a `readlink` or `pwd -P` that fails → stop, never run it, and tell the user to install or update hermy with `get.sh`'*"that step is the user's, never yours"*'`<hermy>` below is that file, resolved once: run it single-quoted'*", each $pq"*"\`'<hermy>' config\`"*) ;; *) return 1;; esac; }
-t 0 "the AGENTS.md block checks command -v hermy, then runs the path it printed, and names get.sh" agentsmd "$here/skills/onboard/SKILL.md"
-sed 's/`command -v hermy`/`hermy`/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block without the command -v hermy check fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/it must print an absolute path/it must print a path/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block that takes a relative hermy, the working directory's, fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/That path, every link on the way to its file ([^)]*) and the file itself/The file that path resolves to/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block that checks the resolved file alone, so a link in the repository to a file outside passes, fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/ by identity ([^)]*), never by spelling//' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block that compares by spelling, so a firmlink or bind-mount spelling passes, fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/ (the parent of `git rev-parse --path-format=absolute --git-common-dir`, spelled with `pwd -P`)//' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block that does not say how to find the main checkout, which a linked worktree's toplevel is not, fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/, every worktree of this repository (`git worktree list`)//' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block that takes a hermy inside another worktree of the repository fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/, the checkout you run in (`git rev-parse --show-toplevel`)//' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block that takes a hermy inside the checkout the agent runs in fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/ and your working directory//' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block that takes a hermy inside the agent's working directory fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/A hermy skill listed for this session/A loaded hermy skill/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block that gives way to a loaded skill alone, not one listed for the session, fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s|; `<hermy>` below is then [^.]*\.|.|' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block that leaves <hermy> undefined once a listed skill takes over fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/ A `git` command above that fails.* git cannot place this repository here\.//' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block with no stop of its own where git cannot place the repository (a jj repository with no .git, a git before 2.31) fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/No output, an alias, or a /Anything else (no output, an alias, a /' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block whose get.sh stop reads as anything else, so the path that passes never reaches its Otherwise, fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/, each `'"'"'` in it written [^,]*,/,/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block that does not say how to write a quote in the path, which would end the quoting, fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/No output, an alias/No output, a stale install, an alias/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block that claims a stop on a stale install, which nothing checks, fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/`'"'"'<hermy>'"'"' status`/`<hermy> status`/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+# The block, read by agents that may have no plugin, never runs hermy from
+# PATH nor resolves it there (no `command -v`): a hermy skill listed for the
+# session is the agent's source, its Config and Worktrees sections where the
+# host injects, else its fallback line's `'<plugin dir>/bin/hermy'`; otherwise
+# it runs get.sh's install, `${HERMY_HOME:-$HOME/.hermy}/bin/hermy`,
+# single-quoted, a `'` in it written `'\''`, and a missing one, like a missing
+# plugin, is the user's own get.sh run, never the agent's.
+askill="A hermy skill listed for this session → load it and read them from its Config and Worktrees sections, or, where those show a \`bash\` command rather than its output, as its fallback line says, by \`'<plugin dir>/bin/hermy'\`"
+aget='Otherwise `<hermy>` is the path `${HERMY_HOME:-$HOME/.hermy}/bin/hermy` expands to'
+ano="missing or not executable → stop and tell the user to install or update hermy with \`get.sh\` from https://github.com/mnsami/hermy: that step is the user's, never yours"
+anot="Not installed → stop and tell the user to install or update it with \`get.sh\` from that repository: that step is the user's, never yours"
+agentsmd() { b=$(awk '/^   <!-- hermy:begin -->$/,/^   <!-- hermy:end -->$/' "$1") && ! barehermy "$b" && case "$b" in *'`<hermy> '*|*'command -v'*|*'get it from that repository'*) return 1;; *"$askill"*"$aget"*"$ano"*"Else run \`'<hermy>' config\`"*", each $pq"*"$anot"*) ;; *) return 1;; esac; }
+blk='/^   <!-- hermy:begin -->$/,/^   <!-- hermy:end -->$/'
+t 0 "the AGENTS.md block defers to a listed skill, else runs get.sh's install by its path, and leaves installing to the user" agentsmd "$here/skills/onboard/SKILL.md"
+sed "$blk"'s/Never merge\./Never merge. Check `command -v hermy` first./' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that resolves hermy with command -v, which PATH answers, fails it" agentsmd "$tmp/onboard.md"
+sed "$blk"'s/`'"'"'<hermy>'"'"' status`/`hermy status`/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that runs a bare hermy, which PATH picks, fails it" agentsmd "$tmp/onboard.md"
+sed "$blk"'s/ A hermy skill listed for this session → [^.]*\.//' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block without the listed-skill rule fails it" agentsmd "$tmp/onboard.md"
+sed "$blk"'s/A hermy skill listed for this session/A loaded hermy skill/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that defers to a loaded skill alone, not one listed for the session, fails it" agentsmd "$tmp/onboard.md"
+sed "$blk"'s|, or, where those show [^.]*`'"'"'<plugin dir>/bin/hermy'"'"'`||' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that defers to a listed skill's injected sections alone, with nothing to run where the host does not inject, fails it" agentsmd "$tmp/onboard.md"
+sed "$blk"'s|`${HERMY_HOME:-$HOME/.hermy}/bin/hermy`|`$HOME/.hermy/bin/hermy`|' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that runs another path than get.sh's install, \${HERMY_HOME:-\$HOME/.hermy}/bin/hermy, fails it" agentsmd "$tmp/onboard.md"
+sed "$blk"'s/missing or not executable → stop/missing → stop/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that goes on with an install that is not executable fails it" agentsmd "$tmp/onboard.md"
+sed "$blk"'s/`'"'"'<hermy>'"'"' config`/`<hermy> config`/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that runs the path unquoted, which a space, \$ or backtick in it splits or expands, fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/`'"'"'<hermy>'"'"' status`/`hermy status`/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block that runs a bare hermy after the check, which PATH picks again, fails it" agentsmd "$tmp/onboard.md"
-sed "/hermy:begin/,/hermy:end/s/remove that \`PATH\` entry or put the install's directory ahead of it/install or update hermy with \`get.sh\`/" "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
-t 1 "an AGENTS.md block that answers a hermy inside with get.sh, whose install PATH still finds behind it, fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/and tell the user to install or update/and install or update/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+sed "$blk"'s/, each `'"'"'` in it written [^.]*\././' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that does not say how to write a quote in the path, which would end the quoting, fails it" agentsmd "$tmp/onboard.md"
+sed "$blk"'s/and tell the user to install or update hermy/and install or update hermy/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that has the agent run get.sh itself, not the user, fails it" agentsmd "$tmp/onboard.md"
-sed '/hermy:begin/,/hermy:end/s/Not installed .*/Not installed → get it from that repository./' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+sed "$blk"'s/Not installed .*/Not installed → get it from that repository./' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that has the agent get a missing plugin from the repository itself fails it" agentsmd "$tmp/onboard.md"
 # The name from before the rename (#463): no tracked path holds it, nor any
 # line of a tracked file once the spellings hermy still reads for a project
