@@ -149,10 +149,14 @@ t 1 "schema: a key added to one copy only fails it" schema "$tmp/onboard.md" "$h
 # `skills/<name>/SKILL.md`, never one inside the project, which it names as the
 # main checkout and how to find it, nor inside the checkout the agent runs in
 # or a worktree of the repository, each compared physically, and stops when
-# unknown or without bin/hermy; where git cannot place them (a jj repository
-# with no .git, a git before 2.31), or jj's root lies below git's (a jj
-# repository nested in another git repository), it places them through jj, the
-# worktrees from jj workspace list alone, and stops only where neither can, the conditions, the definition and the stops one unbroken
+# unknown or without bin/hermy; a git before 2.31, which prints
+# --path-format back, places the main checkout by plain --git-common-dir;
+# where git cannot place them (a jj repository with no .git), or jj's root
+# lies below git's (a jj repository nested in another git repository), it
+# places them through jj, the worktrees from jj workspace list alone, printed
+# by a root template, every jj call with --ignore-working-copy --no-pager, so
+# none snapshots the working copy or runs a program its config names, and
+# stops only where neither can, the conditions, the definition and the stops one unbroken
 # string, so no stop can move out of the conditions into a sentence of its
 # own, names `'<plugin dir>/bin/hermy' <verb>`, the path single-quoted, a `'`
 # in it written `'\''`, for reading the sections by hand, `CLAUDE_PLUGIN_ROOT`
@@ -166,10 +170,14 @@ t 1 "schema: a key added to one copy only fails it" schema "$tmp/onboard.md" "$h
 # new skill goes in the table.
 pq="\`'\` in it written \`'\\''\`"
 pcond='Only where a section above shows a `bash` command rather than its output, or `CLAUDE_PLUGIN_ROOT` is unexpanded: '
-pdin='never one inside the project (the main checkout: the parent of `git rev-parse --path-format=absolute --git-common-dir`, spelled with `pwd -P`), inside the checkout you run in (`git rev-parse --show-toplevel`) or inside a worktree of this repository (`git worktree list`, and `jj workspace list` in a jj repository), each compared physically, links followed; unknown, or no `bin/hermy` there → stop and say so; `jj workspace root` succeeding and lying physically below `git rev-parse --show-toplevel` (a jj repository nested in another git repository), or either `git rev-parse` failing or printing anything but one absolute path (a jj repository with no `.git`, a git before 2.31) → place them through jj: the main checkout is `jj workspace root` run in the default workspace, or the directory `.worktrees/` sits in, the checkout you run in `jj workspace root`, and the worktrees `jj workspace list` alone, never `git worktree list`; '"git's placement only where jj gives no root or one at or above git's"'; neither git nor jj placing them → stop and say neither can place the project here. Every command below single-quotes `<plugin dir>`, each '"$pq."
+pmain='the parent of `git rev-parse --path-format=absolute --git-common-dir`, spelled with `pwd -P`, or, where its first line is `--path-format=absolute`, as a git before 2.31 prints it, `cd` from the directory you run in into the parent of plain `git rev-parse --git-common-dir` and take `pwd -P`'
+jr='`jj workspace root --ignore-working-copy --no-pager`'
+jl="\`jj workspace list --ignore-working-copy --no-pager -T 'if(root, root ++ \"\\n\")'\`"
+pjj="$jr succeeding and lying physically below \`git rev-parse --show-toplevel\` (a jj repository nested in another git repository), or either git placement above failing or giving anything but one absolute path (a jj repository with no \`.git\`) → place them through jj: the main checkout is $jr run in the default workspace, or the directory \`.worktrees/\` sits in"
+pdin="never one inside the project (the main checkout: $pmain), inside the checkout you run in (\`git rev-parse --show-toplevel\`) or inside a worktree of this repository (\`git worktree list\`, and $jl in a jj repository), each compared physically, links followed; unknown, or no \`bin/hermy\` there → stop and say so; $pjj, the checkout you run in $jr, and the worktrees $jl alone, never \`git worktree list\`; git's placement only where jj gives no root or one at or above git's; neither git nor jj placing them → stop and say neither can place the project here. Every command below single-quotes \`<plugin dir>\`, each $pq."
 pbin="\`'<plugin dir>/bin/hermy' "
 fok=("$pbin" 'hermy plugin' '`bin/hermy`')
-hok=("${fok[@]}" "\`'<plugin dir>/bin/hermy'\`" "\`'<hermy>' " '`<hermy>`' 'a bare `hermy`' '`hermy` come from' 'update hermy with' '## hermy' '[hermy]' 'https://github.com/mnsami/hermy' 'hermy:begin' 'hermy:end' '`hermy:config`' '`${HERMY_HOME:-$HOME/.hermy}/bin/hermy`')
+hok=("${fok[@]}" "\`'<plugin dir>/bin/hermy'\`" "\`'<hermy>' " '`<hermy>`' 'a bare `hermy`' '`hermy` come from' 'update hermy with' '## hermy' '[hermy]' 'https://github.com/mnsami/hermy' 'hermy:begin' 'hermy:end' '`hermy:config`' '`hermy/.claude/skills/config/SKILL.md`' '`${HERMY_HOME:-$HOME/.hermy}/bin/hermy`')
 barehermy() { r=$1; shift; for p in "$@"; do r=${r//"$p"/}; done; case "$r" in *hermy*) return 0;; esac; return 1; }
 fallback() { line=$(grep -F '`CLAUDE_PLUGIN_ROOT` unexpanded' "$1") || return 1; barehermy "$line" "${fok[@]}" && return 1; n=${1%/SKILL.md}; n=${n##*/}; n=${n%.md}; for w in "$pcond\`<plugin dir>\` is the directory holding this skill's \`skills/$n/SKILL.md\`, the hermy plugin's own install directory, $pdin" "\`'<plugin dir>/bin/hermy' $2\`" 'never a `bin/hermy`' ${3-}; do case "$line" in *"$w"*) ;; *) return 1;; esac; done; }
 for s in 'config status $ARGUMENTS' 'drop status $ARGUMENTS' 'migrate status' 'next status' 'onboard detect' 'refresh status' 'ship status $ARGUMENTS' 'start status $issue $onto $base `agents/`' 'triage status $ARGUMENTS'; do read -r n v a <<< "$s"; t 0 "skill $n carries the fallback for a host that does not inject" fallback "$here/skills/$n/SKILL.md" "$v" "$a"; done
@@ -219,16 +227,24 @@ sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|→ stop and say so|→ guess|' "$here/s
 t 1 "one whose fallback goes on with no plugin dir fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|, or no `bin/hermy` there||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback goes on with no bin/hermy in the plugin dir, where PATH would pick another, fails it" fallback "$tmp/next.md" status
-sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|; `jj workspace root` succeeding .* can place the project here||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
-t 1 "one whose fallback goes on where git cannot place the project (a jj repository with no .git, a git before 2.31) fails it" fallback "$tmp/next.md" status
-sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`jj workspace root` succeeding and lying physically below `git rev-parse --show-toplevel` (a jj repository nested in another git repository), or ||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|; `jj workspace root [^`]*` succeeding .* can place the project here||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+t 1 "one whose fallback goes on where git cannot place the project (a jj repository with no .git) fails it" fallback "$tmp/next.md" status
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`jj workspace root [^`]*` succeeding and lying physically below `git rev-parse --show-toplevel` (a jj repository nested in another git repository), or ||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback takes git's placement where jj's root lies below it (a jj repository in a \$HOME/.git), so the plugin dir falls inside the outer checkout, fails it" fallback "$tmp/next.md" status
-sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|, and the worktrees `jj workspace list` alone, never `git worktree list`;|;|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|, and the worktrees `jj workspace list [^`]*` alone, never `git worktree list`;|;|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback still takes git worktree list under jj's placement (a jj repository in a \$HOME/.git, where git lists \$HOME), so the plugin dir falls inside a worktree, fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|→ place them through jj: [^;]*; git'"'"'s placement [^;]*; neither git nor jj placing them → stop and say neither|→ stop and say git|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback stops at a jj repository with no .git, where jj places the project, fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|; neither git nor jj placing them → stop and say neither can place the project here||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback goes on where neither git nor jj places the project fails it" fallback "$tmp/next.md" status
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|, or, where its first line is `--path-format=absolute`, as a git before 2.31 prints it, [^)]*||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+t 1 "one whose fallback has no route for a git before 2.31, which prints --path-format back, so a git-only repository goes to jj and stops, fails it" fallback "$tmp/next.md" status
+for c in list root; do
+  sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`jj workspace '"$c"' --ignore-working-copy --no-pager|`jj workspace '"$c"'|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+  t 1 "one whose fallback runs jj workspace $c without --ignore-working-copy --no-pager, which snapshots the working copy and runs what its config names, fails it" fallback "$tmp/next.md" status
+done
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s| -T '"'"'[^'"'"']*'"'"'||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+t 1 "one whose fallback runs jj workspace list with no root template, which prints no path to compare, fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|, each `'"'"'` in it written [^.]*||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback does not say how to write a quote in the plugin dir, which would end the quoting, fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|never a `bin/hermy`|never a copy|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
@@ -247,12 +263,17 @@ t 0 "onboard names the AGENTS.md end marker" grep -qF '<!-- hermy:end -->' "$her
 # The block, read by agents that may have no plugin, never runs hermy from
 # PATH nor resolves it there (no `command -v`), and no hermy by another path
 # anywhere in a command (barehermy). It places the checkouts, the main one, the
-# agent's and every worktree, through git, else through jj (a jj repository
-# with no .git, or one whose root lies below git's; the worktrees from jj
-# workspace list alone), and stops only where neither can, each compared physically:
-# the hermy plugin's own `config` skill listed for the session, told from the
-# listing alone (`hermy:config` in Claude Code, never an unprefixed `config`, or
-# a SKILL.md it shows outside every checkout), never by loading one, is the agent's
+# agent's and every worktree, as the fallback lines do (a git before 2.31 by
+# plain --git-common-dir, every jj call with --ignore-working-copy --no-pager),
+# through git, else through jj (a jj repository with no .git, or one whose root
+# lies below git's; the worktrees from jj workspace list alone, by a root
+# template), and stops only where neither can, each compared physically:
+# the hermy plugin's own `config` skill listed for the session, told before any
+# load (a SKILL.md the listing shows outside every checkout, or `hermy:config`
+# in Claude Code, never an unprefixed `config`, only where no checkout nor the
+# directory the agent runs in holds hermy/.claude/skills/config/SKILL.md, which
+# Claude Code lists under the same label), never by its label alone nor by
+# loading one, is the agent's
 # source, its Current and Worktrees sections alone where the host injects,
 # never its steps, else its fallback line's `'<plugin dir>/bin/hermy'`, and
 # never a directory-scoped copy or one inside a checkout; otherwise it runs
@@ -261,8 +282,8 @@ t 0 "onboard names the AGENTS.md end marker" grep -qF '<!-- hermy:end -->' "$her
 # project could point it at the project's own bin/hermy), single-quoted, a `'`
 # in it written `'\''`, and a missing one, like a missing plugin, is the user's
 # own get.sh run, never the agent's.
-acheck="The checkouts are the main checkout (the parent of \`git rev-parse --path-format=absolute --git-common-dir\`, spelled with \`pwd -P\`), the one you run in (\`git rev-parse --show-toplevel\`) and every worktree of this repository (\`git worktree list\`, and \`jj workspace list\` in a jj repository); \`jj workspace root\` succeeding and lying physically below \`git rev-parse --show-toplevel\` (a jj repository nested in another git repository), or either \`git rev-parse\` failing or printing anything but one absolute path (a jj repository with no \`.git\`, a git before 2.31) → place them through jj: the main checkout is \`jj workspace root\` run in the default workspace, or the directory \`.worktrees/\` sits in, the one you run in \`jj workspace root\`, and the worktrees \`jj workspace list\` alone, never \`git worktree list\`; git's placement only where jj gives no root or one at or above git's; neither git nor jj placing them → stop and say neither can place the project here. Inside a checkout is compared physically, links followed."
-askill="The hermy plugin's own \`config\` skill listed for this session, told from the listing alone before any load, by the host's label for a plugin's skill (\`hermy:config\` in Claude Code, never an unprefixed \`config\`) or a \`SKILL.md\` the listing shows outside every checkout, and never a directory-scoped skill (one listed with a path prefix) nor one the listing shows inside a checkout → load it and read them from its Current and Worktrees sections alone, whose commands only read, never following its steps, or, where those show a \`bash\` command rather than its output, as its fallback line says, by \`'<plugin dir>/bin/hermy'\`. Never load a skill to find where its \`SKILL.md\` lies, since loading runs its commands: a listing that cannot show it is the plugin's own → \`<hermy>\` below."
+acheck="The checkouts are the main checkout ($pmain), the one you run in (\`git rev-parse --show-toplevel\`) and every worktree of this repository (\`git worktree list\`, and $jl in a jj repository); $pjj, the one you run in $jr, and the worktrees $jl alone, never \`git worktree list\`; git's placement only where jj gives no root or one at or above git's; neither git nor jj placing them → stop and say neither can place the project here. Inside a checkout is compared physically, links followed."
+askill="The hermy plugin's own \`config\` skill listed for this session, told before any load, by a \`SKILL.md\` the listing shows outside every checkout or by the host's label for a plugin's skill (\`hermy:config\` in Claude Code, never an unprefixed \`config\`) where no checkout, nor the directory you run in, holds \`hermy/.claude/skills/config/SKILL.md\`, which the host lists under that same label, and never a directory-scoped skill (one listed with a path prefix) nor one the listing shows inside a checkout → load it and read them from its Current and Worktrees sections alone, whose commands only read, never following its steps, or, where those show a \`bash\` command rather than its output, as its fallback line says, by \`'<plugin dir>/bin/hermy'\`. Never take a skill on its label alone, nor load one to find where its \`SKILL.md\` lies, since loading runs its commands: anything else → \`<hermy>\` below."
 aget='Otherwise `<hermy>` is the path `${HERMY_HOME:-$HOME/.hermy}/bin/hermy` expands to'
 ano="missing or not executable → stop and tell the user to install or update hermy with \`get.sh\` from https://github.com/mnsami/hermy: that step is the user's, never yours"
 ahome='not absolute, or inside a checkout → stop and say so, naming the cause; '
@@ -290,7 +311,7 @@ sed "$blk"'s/, and never a directory-scoped skill (one listed with a path prefix
 t 1 "an AGENTS.md block that trusts a copy of the skill that is directory-scoped or lies in the project, the agent's checkout or a worktree, whose fallback line could run the project's own bin/hermy, fails it" agentsmd "$tmp/onboard.md"
 sed "$blk"'s/the host'"'"'s label for a plugin'"'"'s skill (`hermy:config` in Claude Code, never an unprefixed `config`)/its name, `config`/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that takes the config skill by its unprefixed name, which a .claude/skills/config/ planted in the project carries, fails it" agentsmd "$tmp/onboard.md"
-sed "$blk"'s/ Never load a skill to find where its `SKILL.md` lies, since loading runs its commands: a listing that cannot show it is the plugin'"'"'s own → `<hermy>` below\./ Load it to find where its `SKILL.md` lies when the listing does not show that./' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+sed "$blk"'s/, nor load one to find where its `SKILL.md` lies, since loading runs its commands: anything else → `<hermy>` below\./; load one to find where its `SKILL.md` lies when the listing does not show that./' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that loads a skill to find where its SKILL.md lies, which runs its injected commands first, fails it" agentsmd "$tmp/onboard.md"
 sed "$blk"'s/ and every worktree of this repository ([^)]*)//' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block whose checkouts leave out the repository's other worktrees fails it" agentsmd "$tmp/onboard.md"
@@ -298,12 +319,22 @@ sed "$blk"'s/ Inside a checkout is compared physically, links followed\.//' "$he
 t 1 "an AGENTS.md block that compares a path with the checkouts by its spelling, which a link reaches past, fails it" agentsmd "$tmp/onboard.md"
 sed "$blk"'s/→ place them through jj: [^;]*; git'"'"'s placement [^;]*; neither git nor jj placing them → stop and say neither/→ stop and say git/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that stops at a jj repository with no .git, where jj places the checkouts, fails it" agentsmd "$tmp/onboard.md"
-sed "$blk"'s/`jj workspace root` succeeding and lying physically below `git rev-parse --show-toplevel` (a jj repository nested in another git repository), or //' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+sed "$blk"'s/`jj workspace root [^`]*` succeeding and lying physically below `git rev-parse --show-toplevel` (a jj repository nested in another git repository), or //' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that takes git's placement where jj's root lies below it (a jj repository in a \$HOME/.git), so every path under the outer checkout reads as inside one, fails it" agentsmd "$tmp/onboard.md"
-sed "$blk"'s/, and the worktrees `jj workspace list` alone, never `git worktree list`;/;/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+sed "$blk"'s/, and the worktrees `jj workspace list [^`]*` alone, never `git worktree list`;/;/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that still takes git worktree list under jj's placement (a jj repository in a \$HOME/.git, where git lists \$HOME), so the config skill and <hermy> read as inside a worktree, fails it" agentsmd "$tmp/onboard.md"
 sed "$blk"'s/; neither git nor jj placing them → stop and say neither can place the project here//' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that goes on where neither git nor jj places the checkouts fails it" agentsmd "$tmp/onboard.md"
+sed "$blk"'s/, or, where its first line is `--path-format=absolute`, as a git before 2.31 prints it, [^)]*//' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that has no route for a git before 2.31, which prints --path-format back, fails it" agentsmd "$tmp/onboard.md"
+for c in list root; do
+  sed "$blk"'s/`jj workspace '"$c"' --ignore-working-copy --no-pager/`jj workspace '"$c"'/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+  t 1 "an AGENTS.md block that runs jj workspace $c without --ignore-working-copy --no-pager, which snapshots the working copy and runs what its config names, fails it" agentsmd "$tmp/onboard.md"
+done
+sed "$blk"'s/ -T '"'"'[^'"'"']*'"'"'//' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that runs jj workspace list with no root template, which prints no path to compare, fails it" agentsmd "$tmp/onboard.md"
+sed "$blk"'s| where no checkout, nor the directory you run in, holds `hermy/.claude/skills/config/SKILL.md`, which the host lists under that same label,||' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that takes hermy:config on its label alone, which Claude Code gives a hermy/.claude/skills/config/ planted in a checkout too, fails it" agentsmd "$tmp/onboard.md"
 sed "$blk"'s|, or, where those show [^.]*`'"'"'<plugin dir>/bin/hermy'"'"'`||' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that defers to a listed skill's injected sections alone, with nothing to run where the host does not inject, fails it" agentsmd "$tmp/onboard.md"
 sed "$blk"'s|`${HERMY_HOME:-$HOME/.hermy}/bin/hermy`|`$HOME/.hermy/bin/hermy`|' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
