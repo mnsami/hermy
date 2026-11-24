@@ -202,7 +202,7 @@ t 0 "onboard names the AGENTS.md end marker" grep -qF '<!-- hermy:end -->' "$her
 # that resolved path, never a bare `hermy <verb>`, which PATH picks again; a
 # relative path or one inside is the user's PATH entry to remove or put behind
 # the install, anything else the user's own get.sh run, never the agent's.
-agentsmd() { b=$(awk '/^   <!-- hermy:begin -->$/,/^   <!-- hermy:end -->$/' "$1") && case "$b" in *'`hermy '*) return 1;; *'`command -v hermy`'*'absolute path that lies outside this repository, links followed'*"repository's root (the main checkout) spelled physically"*'outside the checkout you run in (`git rev-parse --show-toplevel`)'*'outside your working directory (`pwd -P`)'*"A relative path, or one inside any of the three → stop, never run it, and tell the user to remove that \`PATH\` entry or put the install's directory ahead of it"*'→ stop, never run it, and tell the user to install or update hermy with `get.sh`'*"that step is the user's, never yours"*'`<hermy>` below is that path with its links followed, resolved once'*'own fallback line wins over this block'*'`<hermy> config`'*) ;; *) return 1;; esac; }
+agentsmd() { b=$(awk '/^   <!-- hermy:begin -->$/,/^   <!-- hermy:end -->$/' "$1") && case "$b" in *'`hermy '*|*'get it from that repository'*) return 1;; *'`command -v hermy`'*'absolute path that lies outside this repository, links followed'*"repository's root (the main checkout) spelled physically"*'outside the checkout you run in (`git rev-parse --show-toplevel`)'*'outside your working directory (`pwd -P`)'*"A relative path, or one inside any of the three → stop, never run it, and tell the user to remove that \`PATH\` entry or put the install's directory ahead of it"*'→ stop, never run it, and tell the user to install or update hermy with `get.sh`'*"that step is the user's, never yours"*'`<hermy>` below is that path with its links followed, resolved once'*'own fallback line wins over this block'*'`<hermy> config`'*) ;; *) return 1;; esac; }
 t 0 "the AGENTS.md block checks command -v hermy, then runs the path it printed, and names get.sh" agentsmd "$here/skills/onboard/SKILL.md"
 sed 's/`command -v hermy`/`hermy`/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block without the command -v hermy check fails it" agentsmd "$tmp/onboard.md"
@@ -220,6 +220,8 @@ sed "/hermy:begin/,/hermy:end/s/remove that \`PATH\` entry or put the install's 
 t 1 "an AGENTS.md block that answers a hermy inside with get.sh, whose install PATH still finds behind it, fails it" agentsmd "$tmp/onboard.md"
 sed '/hermy:begin/,/hermy:end/s/and tell the user to install or update/and install or update/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that has the agent run get.sh itself, not the user, fails it" agentsmd "$tmp/onboard.md"
+sed '/hermy:begin/,/hermy:end/s/Not installed .*/Not installed → get it from that repository./' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that has the agent get a missing plugin from the repository itself fails it" agentsmd "$tmp/onboard.md"
 # The name from before the rename (#463): no tracked path holds it, nor any
 # line of a tracked file once the spellings hermy still reads for a project
 # onboarded before it, and the names outside this repository it keeps, are
