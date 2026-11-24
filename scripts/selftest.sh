@@ -147,7 +147,9 @@ t 1 "schema: a key added to one copy only fails it" schema "$tmp/onboard.md" "$h
 # only under those two conditions, so a host that injects never stops on it,
 # that `<plugin dir>` is the directory holding the skill's own
 # `skills/<name>/SKILL.md`, never one inside the project, the two compared
-# physically, and stops when unknown or without bin/hermy, names `<plugin dir>/bin/hermy
+# physically, and stops when unknown or without bin/hermy, the conditions, the
+# definition and the stop one unbroken string, so the stop cannot move out of
+# the conditions into a sentence of its own, names `<plugin dir>/bin/hermy
 # <verb>` for reading the sections by hand, `CLAUDE_PLUGIN_ROOT` unexpanded as
 # never a `bin/hermy` inside the project, and each variable the skill takes,
 # and holds no bare `hermy <verb>`, which PATH would pick, nor a `bin/hermy
@@ -157,7 +159,7 @@ t 1 "schema: a key added to one copy only fails it" schema "$tmp/onboard.md" "$h
 pcond='Only where a section above shows a `bash` command rather than its output, or `CLAUDE_PLUGIN_ROOT` is unexpanded: '
 pdin='never one inside the project, the two compared physically, links followed; unknown, or no `bin/hermy` there → stop and say so.'
 pbin='`<plugin dir>/bin/hermy '
-fallback() { line=$(grep -F '`CLAUDE_PLUGIN_ROOT` unexpanded' "$1") || return 1; rest=${line//"$pbin"/}; case "$rest" in *'`hermy '*|*'bin/hermy '*) return 1;; esac; n=${1%/SKILL.md}; n=${n##*/}; n=${n%.md}; for w in "$pcond\`<plugin dir>\` is the directory holding this skill's \`skills/$n/SKILL.md\`, " "$pdin" "\`<plugin dir>/bin/hermy $2\`" 'never a `bin/hermy`' ${3-}; do case "$line" in *"$w"*) ;; *) return 1;; esac; done; }
+fallback() { line=$(grep -F '`CLAUDE_PLUGIN_ROOT` unexpanded' "$1") || return 1; rest=${line//"$pbin"/}; case "$rest" in *'`hermy '*|*'bin/hermy '*) return 1;; esac; n=${1%/SKILL.md}; n=${n##*/}; n=${n%.md}; for w in "$pcond\`<plugin dir>\` is the directory holding this skill's \`skills/$n/SKILL.md\`, the hermy plugin's own install directory, $pdin" "\`<plugin dir>/bin/hermy $2\`" 'never a `bin/hermy`' ${3-}; do case "$line" in *"$w"*) ;; *) return 1;; esac; done; }
 for s in 'config status $ARGUMENTS' 'drop status $ARGUMENTS' 'migrate status' 'next status' 'onboard detect' 'refresh status' 'ship status $ARGUMENTS' 'start status $issue $onto $base `agents/`' 'triage status $ARGUMENTS'; do read -r n v a <<< "$s"; t 0 "skill $n carries the fallback for a host that does not inject" fallback "$here/skills/$n/SKILL.md" "$v" "$a"; done
 grep -vF '`CLAUDE_PLUGIN_ROOT` unexpanded' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "a skill that injects without the fallback fails it" fallback "$tmp/next.md" status
@@ -171,6 +173,8 @@ sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`<plugin dir>` is the directory holding 
 t 1 "one whose fallback drops where the plugin dir is fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|^Only where [^:]*: ||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose plugin-dir stop sits outside the fallback conditions, so a host that injects stops on it, fails it" fallback "$tmp/next.md" status
+awk -v d="$pdin" 'index($0, "`CLAUDE_PLUGIN_ROOT` unexpanded") { i = index($0, ", " d); $0 = substr($0, 1, i - 1) "." substr($0, i + 2 + length(d)) " " d } 1' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+t 1 "one that keeps the conditions but moves the plugin-dir stop into a sentence of its own, outside them, fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`skills/next/SKILL.md`|`skills/triage/SKILL.md`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose plugin dir names another skill's SKILL.md, a line copied from it, fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|, the two compared physically, links followed||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
@@ -193,10 +197,12 @@ t 1 "no skill carries the injection syntax inside a line, which Claude Code woul
 t 0 "onboard names the AGENTS.md begin marker" grep -qF '<!-- hermy:begin -->' "$here/skills/onboard/SKILL.md"
 t 0 "onboard names the AGENTS.md end marker" grep -qF '<!-- hermy:end -->' "$here/skills/onboard/SKILL.md"
 # The block, read by agents that may have no plugin, runs hermy only once
-# `command -v hermy` names one outside the repository's root spelled
-# physically, and then by that resolved path, never a bare `hermy <verb>`,
-# which PATH picks again; else it points at get.sh.
-agentsmd() { b=$(awk '/^   <!-- hermy:begin -->$/,/^   <!-- hermy:end -->$/' "$1") && case "$b" in *'`hermy '*) return 1;; *'`command -v hermy`'*'absolute path that lies outside this repository, links followed'*"repository's root (the main checkout) spelled physically"*'→ stop, never run it'*'`get.sh`'*'`<hermy>` below is that path with its links followed, resolved once'*'own fallback line wins over this block'*'`<hermy> config`'*) ;; *) return 1;; esac; }
+# `command -v hermy` names one outside the repository's root, the checkout the
+# agent runs in and its working directory, each spelled physically, and then by
+# that resolved path, never a bare `hermy <verb>`, which PATH picks again; a
+# relative path or one inside is the user's PATH entry to remove or put behind
+# the install, anything else the user's own get.sh run, never the agent's.
+agentsmd() { b=$(awk '/^   <!-- hermy:begin -->$/,/^   <!-- hermy:end -->$/' "$1") && case "$b" in *'`hermy '*) return 1;; *'`command -v hermy`'*'absolute path that lies outside this repository, links followed'*"repository's root (the main checkout) spelled physically"*'outside the checkout you run in (`git rev-parse --show-toplevel`)'*'outside your working directory (`pwd -P`)'*"A relative path, or one inside any of the three → stop, never run it, and tell the user to remove that \`PATH\` entry or put the install's directory ahead of it"*'→ stop, never run it, and tell the user to install or update hermy with `get.sh`'*"that step is the user's, never yours"*'`<hermy>` below is that path with its links followed, resolved once'*'own fallback line wins over this block'*'`<hermy> config`'*) ;; *) return 1;; esac; }
 t 0 "the AGENTS.md block checks command -v hermy, then runs the path it printed, and names get.sh" agentsmd "$here/skills/onboard/SKILL.md"
 sed 's/`command -v hermy`/`hermy`/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block without the command -v hermy check fails it" agentsmd "$tmp/onboard.md"
@@ -206,6 +212,14 @@ sed 's/ (the main checkout) spelled physically//' "$here/skills/onboard/SKILL.md
 t 1 "an AGENTS.md block that compares with the root as spelled, through a link, fails it" agentsmd "$tmp/onboard.md"
 sed '/hermy:begin/,/hermy:end/s/`<hermy> status`/`hermy status`/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that runs a bare hermy after the check, which PATH picks again, fails it" agentsmd "$tmp/onboard.md"
+sed '/hermy:begin/,/hermy:end/s/outside the checkout you run in (`git rev-parse --show-toplevel`) and //' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that takes a hermy inside the checkout the agent runs in, a worktree outside the main one, fails it" agentsmd "$tmp/onboard.md"
+sed '/hermy:begin/,/hermy:end/s/ and outside your working directory (`pwd -P`)//' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that takes a hermy inside the agent's working directory fails it" agentsmd "$tmp/onboard.md"
+sed "/hermy:begin/,/hermy:end/s/remove that \`PATH\` entry or put the install's directory ahead of it/install or update hermy with \`get.sh\`/" "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that answers a hermy inside with get.sh, whose install PATH still finds behind it, fails it" agentsmd "$tmp/onboard.md"
+sed '/hermy:begin/,/hermy:end/s/and tell the user to install or update/and install or update/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that has the agent run get.sh itself, not the user, fails it" agentsmd "$tmp/onboard.md"
 # The name from before the rename (#463): no tracked path holds it, nor any
 # line of a tracked file once the spellings hermy still reads for a project
 # onboarded before it, and the names outside this repository it keeps, are
