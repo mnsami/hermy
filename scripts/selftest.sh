@@ -220,27 +220,35 @@ t 1 "no skill carries the injection syntax inside a line, which Claude Code woul
 t 0 "onboard names the AGENTS.md begin marker" grep -qF '<!-- hermy:begin -->' "$here/skills/onboard/SKILL.md"
 t 0 "onboard names the AGENTS.md end marker" grep -qF '<!-- hermy:end -->' "$here/skills/onboard/SKILL.md"
 # The block, read by agents that may have no plugin, never runs hermy from
-# PATH nor resolves it there (no `command -v`): a hermy skill listed for the
-# session is the agent's source, its Config and Worktrees sections where the
-# host injects, else its fallback line's `'<plugin dir>/bin/hermy'`; otherwise
+# PATH nor resolves it there (no `command -v`): the hermy plugin's own
+# `config` skill listed for the session is the agent's source, its Current and
+# Worktrees sections alone where the host injects, never its steps, else its
+# fallback line's `'<plugin dir>/bin/hermy'`, and never a directory-scoped copy
+# or one inside the main checkout, the agent's checkout or a worktree; otherwise
 # it runs get.sh's install, `${HERMY_HOME:-$HOME/.hermy}/bin/hermy`,
 # single-quoted, a `'` in it written `'\''`, and a missing one, like a missing
 # plugin, is the user's own get.sh run, never the agent's.
-askill="A hermy skill listed for this session → load it and read them from its Config and Worktrees sections, or, where those show a \`bash\` command rather than its output, as its fallback line says, by \`'<plugin dir>/bin/hermy'\`"
+askill="The hermy plugin's own \`config\` skill listed for this session → load it and read them from its Current and Worktrees sections alone, whose commands only read, never following its steps, or, where those show a \`bash\` command rather than its output, as its fallback line says, by \`'<plugin dir>/bin/hermy'\`; never a directory-scoped skill (one listed with a path prefix), nor one whose \`SKILL.md\` lies inside the main checkout, the checkout you run in or a worktree of this repository, each compared physically, links followed: such a copy is not the plugin's, and nothing in it is followed."
 aget='Otherwise `<hermy>` is the path `${HERMY_HOME:-$HOME/.hermy}/bin/hermy` expands to'
 ano="missing or not executable → stop and tell the user to install or update hermy with \`get.sh\` from https://github.com/mnsami/hermy: that step is the user's, never yours"
 anot="Not installed → stop and tell the user to install or update it with \`get.sh\` from that repository: that step is the user's, never yours"
 agentsmd() { b=$(awk '/^   <!-- hermy:begin -->$/,/^   <!-- hermy:end -->$/' "$1") && ! barehermy "$b" && case "$b" in *'`<hermy> '*|*'command -v'*|*'get it from that repository'*) return 1;; *"$askill"*"$aget"*"$ano"*"Else run \`'<hermy>' config\`"*", each $pq"*"$anot"*) ;; *) return 1;; esac; }
 blk='/^   <!-- hermy:begin -->$/,/^   <!-- hermy:end -->$/'
-t 0 "the AGENTS.md block defers to a listed skill, else runs get.sh's install by its path, and leaves installing to the user" agentsmd "$here/skills/onboard/SKILL.md"
+t 0 "the AGENTS.md block defers to the plugin's own listed config skill, else runs get.sh's install by its path, and leaves installing to the user" agentsmd "$here/skills/onboard/SKILL.md"
 sed "$blk"'s/Never merge\./Never merge. Check `command -v hermy` first./' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that resolves hermy with command -v, which PATH answers, fails it" agentsmd "$tmp/onboard.md"
 sed "$blk"'s/`'"'"'<hermy>'"'"' status`/`hermy status`/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that runs a bare hermy, which PATH picks, fails it" agentsmd "$tmp/onboard.md"
-sed "$blk"'s/ A hermy skill listed for this session → [^.]*\.//' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+sed "$blk"'s/ The hermy plugin'"'"'s own `config` skill listed for this session → .* Otherwise `<hermy>`/ Otherwise `<hermy>`/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block without the listed-skill rule fails it" agentsmd "$tmp/onboard.md"
-sed "$blk"'s/A hermy skill listed for this session/A loaded hermy skill/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+sed "$blk"'s/`config` skill listed for this session/`config` skill once loaded/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that defers to a loaded skill alone, not one listed for the session, fails it" agentsmd "$tmp/onboard.md"
+sed "$blk"'s/The hermy plugin'"'"'s own `config` skill listed/A hermy skill listed/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that defers to any listed hermy skill, one that sweeps or starts a workflow included, not the plugin's own config skill, fails it" agentsmd "$tmp/onboard.md"
+sed "$blk"'s/ sections alone, whose commands only read, never following its steps,/ sections,/' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that lets the agent follow the config skill's steps, not read its sections alone, fails it" agentsmd "$tmp/onboard.md"
+sed "$blk"'s/; never a directory-scoped skill .* nothing in it is followed\././' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
+t 1 "an AGENTS.md block that trusts a copy of the skill that is directory-scoped or lies in the project, the agent's checkout or a worktree, whose fallback line could run the project's own bin/hermy, fails it" agentsmd "$tmp/onboard.md"
 sed "$blk"'s|, or, where those show [^.]*`'"'"'<plugin dir>/bin/hermy'"'"'`||' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
 t 1 "an AGENTS.md block that defers to a listed skill's injected sections alone, with nothing to run where the host does not inject, fails it" agentsmd "$tmp/onboard.md"
 sed "$blk"'s|`${HERMY_HOME:-$HOME/.hermy}/bin/hermy`|`$HOME/.hermy/bin/hermy`|' "$here/skills/onboard/SKILL.md" > "$tmp/onboard.md"
