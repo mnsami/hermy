@@ -52,8 +52,13 @@ esac
 # hooks: off, with the causes, when snap left no mark for this session
 # before them.
 HERMY_HOOKS=1
+# HERMY_SETTINGS: Copilot CLI's settings files, where it reads
+# disableAllHooks and enabledPlugins, which snap and trip then hold as
+# they hold .claude's. Set on Claude Code too, which cannot be told apart
+# here, and reads neither.
+HERMY_SETTINGS=.github/copilot/settings.json:.github/copilot/settings.local.json
 HERMY_ROOT="${CLAUDE_PROJECT_DIR-}" HERMY_SESSION="${CLAUDE_CODE_SESSION_ID-}" HERMY_PID="${CLAUDE_PID-}" HERMY_AGENT_DIR=.claude
-export HERMY_ROOT HERMY_SESSION HERMY_PID HERMY_AGENT_DIR HERMY_HOOKS
+export HERMY_ROOT HERMY_SESSION HERMY_PID HERMY_AGENT_DIR HERMY_HOOKS HERMY_SETTINGS
 # Claude Code's hook payload as the core's neutral input. The call id and
 # session are read with sed, as the core did, so snap without jq and trip with
 # it name the same snapshot. With jq the session is the payload's top-level

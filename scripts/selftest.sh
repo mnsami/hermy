@@ -2605,6 +2605,14 @@ t 0 "settings: naming the file" grep -qF "that command changed .claude/settings.
 rm .claude/settings.json
 rm -rf "settings .claude"
 rm -f .claude/settings.json .claude/settings.local.json
+# Copilot CLI's settings files, which the shim hands the core whatever the
+# environment holds: a shell write of disableAllHooks into a git-ignored
+# .github/copilot/settings.local.json trips with the settings report.
+mkdir -p .github/copilot; echo .github/copilot/settings.local.json >> .git/info/exclude
+t 0 "settings: .github/copilot/settings.local.json is git-ignored here" git check-ignore -q .github/copilot/settings.local.json
+HERMY_SETTINGS=none setting 2 "settings: a shell write of disableAllHooks into .github/copilot/settings.local.json trips, an inherited HERMY_SETTINGS ignored" .github/copilot/settings.local.json '{"disableAllHooks":true}'
+t 0 "settings: naming the file and what a change there can do" grep -qF "that command changed .github/copilot/settings.local.json, the agent's settings for this project, where a change can turn hermy's hooks off" "$tmp/trip.err"
+rm -r .github/copilot; rmdir .github 2>/dev/null
 # detect <line> [VAR=value...]: detect.sh prints exactly that line
 detect() { line=$1; shift; env CLAUDE_PROJECT_DIR="$repo" "$@" "$BASH" "$here/scripts/detect.sh" 2>/dev/null | grep -qx "$line"; }
 detect_remote() {

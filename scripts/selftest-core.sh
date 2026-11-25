@@ -5,7 +5,7 @@
 # under scripts/ and the full lifecycle are selftest.sh's.
 # Usage: bash scripts/selftest-core.sh
 set -u
-for v in "${!CLAUDE_@}"; do unset "$v" 2>/dev/null; done; unset HERMY_AGENT_DIR HERMY_EXEC HERMY_HOOKS HERMY_REF 2>/dev/null
+for v in "${!CLAUDE_@}"; do unset "$v" 2>/dev/null; done; unset HERMY_AGENT_DIR HERMY_EXEC HERMY_HOOKS HERMY_REF HERMY_SETTINGS 2>/dev/null
 # macOS ships no timeout: perl's alarm, which the exec keeps, stands in (a run cut short exits 142, not 124)
 command -v timeout >/dev/null || timeout() { perl -e 'alarm shift; exec { $ARGV[0] } @ARGV or exit 127' "$@"; }
 here="$(cd "$(dirname "$0")/.." && pwd)"
@@ -419,6 +419,37 @@ t 2 "trip: with a jq that fails, a stray file trips" blk "$tmp/failjq:$PATH"
 t 0 "trip: and its verdict is built without jq, the same text" oneblock
 t 2 "trip: with a jq that fails, a stray file named with a quote and a backslash trips" blk "$tmp/failjq:$PATH" 'q"\x.txt'
 t 0 "trip: and its verdict, escaped without jq, is the same text" oneblock
+# HERMY_SETTINGS names more settings files, held as the agent dir's: a shell
+# write of disableAllHooks to each, git-ignored or not, trips with the
+# settings report and not as a change to the main checkout; without it, no
+# settings report, and an ignored one is not seen at all.
+cs=.github/copilot/settings.json:.github/copilot/settings.local.json
+mkdir -p .github/copilot; cp .git/info/exclude "$tmp/exclude"
+for f in .github/copilot/settings.json .github/copilot/settings.local.json; do
+  for ig in no yes; do
+    [ "$ig" = no ] || echo "$f" >> .git/info/exclude
+    HERMY_SETTINGS=$cs report "settings: under HERMY_SETTINGS, a shell write of disableAllHooks to $f (ignored: $ig) trips" "printf '{\"disableAllHooks\":true}\n' > $f"
+    t 0 "settings: naming the file and what a change there can do" grep -qF "that command changed $f, the agent's settings for this project, where a change can turn hermy's hooks off" <<<"$out"
+    t 1 "settings: and not as a change to the main checkout" grep -qF 'changed the main checkout' <<<"$out"
+    rm "$f"
+  done
+done
+cp "$tmp/exclude" .git/info/exclude
+report "settings: without HERMY_SETTINGS, a shell write of disableAllHooks to .github/copilot/settings.json trips" "printf '{\"disableAllHooks\":true}\n' > .github/copilot/settings.json"
+t 1 "settings: but gets no settings report" grep -qF "the agent's settings" <<<"$out"
+rm .github/copilot/settings.json; echo .github/copilot/settings.local.json >> .git/info/exclude
+tripped 0 "settings: without HERMY_SETTINGS, the same write to an ignored .github/copilot/settings.local.json is not seen" "printf '{\"disableAllHooks\":true}\n' > .github/copilot/settings.local.json"
+rm .github/copilot/settings.local.json
+# An entry that is absolute, holds a .. or a control character is ignored;
+# the rest of the list is not. .github/copilot is ignored, so only a
+# settings line could trip.
+echo .github/copilot/ >> .git/info/exclude; mkdir .github/x
+for e in "$repo/.github/copilot/a.json" .github/x/../copilot/a.json $'.github/copilot/a.json\t'; do
+  HERMY_SETTINGS=$e tripped 0 "settings: HERMY_SETTINGS entry $(printf %q "$e") is ignored" 'printf "{\"disableAllHooks\":true}\n" > "$e"'
+  rm -f .github/copilot/*
+done
+HERMY_SETTINGS="::/abs:.github/copilot/a.json" tripped 2 "settings: a HERMY_SETTINGS entry past empty and absolute ones is held" "printf '{\"disableAllHooks\":true}\n' > .github/copilot/a.json"
+rm -r .github; cp "$tmp/exclude" .git/info/exclude
 PATH="$tmp/nojq" t 2 "guard without jq fails closed" guard "$repo/.hermy.yml"
 echo 'guard: warn' >> .hermy.yml
 t 0 "warn: guard still asks on .hermy.yml" asks "$repo/.hermy.yml"

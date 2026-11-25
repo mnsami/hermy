@@ -129,10 +129,9 @@ On Copilot CLI:
 - Copilot's edit tool writes `.claude/` with no prompt, settings files included. Copilot reads hooks from
   `.claude/settings.json` and `settings.local.json` too; the tripwire reports a shell write to either.
 - Copilot also reads `disableAllHooks` and `enabledPlugins` from `.github/copilot/settings.json` and
-  `settings.local.json`, and either can turn hermy's hooks off. The tripwire does not watch them as settings files.
-  The edit guard refuses an edit there as one in the main checkout (advice alone under `guard: warn`). A shell write is reported only as a change to the
-  main checkout, never as turning the hooks off, and not at all once git ignores the file, for example through a line
-  in `.git/info/exclude`.
+  `settings.local.json`, and either can turn hermy's hooks off. The tripwire reports a shell write to either, git-ignored
+  or not, as it does `.claude/`'s. The edit guard refuses an edit there as one in the main checkout, and under
+  `guard: warn` lets it through with advice alone, which the tripwire does not see.
 - `--add-dir '<plugin dir>'`, which the skills need, lets Copilot's tools write the plugin's install, where the hooks
   run from. The edit guard refuses an edit there. A shell command can still rewrite it, unseen, and turn off every
   hook after it.

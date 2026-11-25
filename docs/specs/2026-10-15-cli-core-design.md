@@ -21,6 +21,7 @@ Move hermy's mechanics into a `hermy` command with no Claude Code dependency, so
   - `HERMY_SESSION` from `CLAUDE_CODE_SESSION_ID`
   - `HERMY_PID` from `CLAUDE_PID`
   - `HERMY_AGENT_DIR=.claude`
+  - `HERMY_SETTINGS` (`issue.sh` alone) to `.github/copilot/settings.json:.github/copilot/settings.local.json`
 
   then sources `bin/hermy` (`issue.sh` passes its arguments through; `config.sh` and `detect.sh` call the `config` and `detect` verbs).
 
@@ -34,6 +35,7 @@ The core reads no `CLAUDE_*` variable. The only `.claude` string left in it is t
 | `HERMY_SESSION` | Session id written to and compared with the lock's owner line | Caller not held to the owner, as today |
 | `HERMY_PID` | Pid written to and compared with the owner line | As today without `CLAUDE_PID` |
 | `HERMY_AGENT_DIR` | The agent's own directory, relative to the root | No agent-dir rules |
+| `HERMY_SETTINGS` | More agent settings files, colon-separated, relative to the root, which `snap` and `trip` hold as they hold `$HERMY_AGENT_DIR/settings.json` and `settings.local.json`; an entry that is empty, absolute, holds a `..` or a control character, quote or backslash is ignored. `scripts/issue.sh` always sets it to Copilot CLI's `.github/copilot/settings.json` and `.github/copilot/settings.local.json` | None beyond the agent dir's |
 
 Root resolution is unchanged apart from its start point: `git rev-parse --git-common-dir`, keeping the caller's spelling, and stripping `/.worktrees/*` outside git.
 

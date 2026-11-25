@@ -36,7 +36,10 @@
 # HERMY_HOOKS, set to 1 by an adapter whose agent runs snap before each
 # shell command (any other value is none): start and claim then print
 # hooks: off, with Claude Code's causes, when snap left no mark for
-# HERMY_SESSION in the last 60 s.
+# HERMY_SESSION in the last 60 s; HERMY_SETTINGS, colon-separated paths
+# under the root of more agent settings files, which snap and trip hold as
+# they hold the agent dir's (an entry that is empty, absolute, holds a ..
+# or a control character, quote or backslash is ignored).
 # The config is .hermy.yml at the root, or, from before, .coddy.yml or
 # .claude/coddy.yml: the first present.
 # An issue counts as In Progress once the lock .git/hermy/<issue>/ exists.
@@ -1164,7 +1167,8 @@ snap() {
     case "$hp" in /*) [ "$hp" -ef "$hd" ] ;; *) false ;; esac ||
       { hc=""; [ "${#hp}" -le 1024 ] || hc=" (cut short)"
         if [ -n "$hp" ]; then hp="core.hooksPath $(q "${hp:0:1024}")$hc"; else hp="core.hooksPath unset"; fi; echo "$hp"; echo "hooks $hp" >&4; }; }
-  # The agent's settings files under the agent dir (Claude Code's), which
+  # The agent's settings files (stg: the agent dir's, Claude Code's, and
+  # HERMY_SETTINGS's, Copilot CLI's from its shim), which
   # can turn hermy's hooks off or change what runs outside the sandbox: one
   # line each, written on fd 4 too as "settings <line>", which trip tells it
   # by. A plain file of 1 MiB at most, the bound dirty files are hashed to,
@@ -1181,7 +1185,7 @@ snap() {
   # holding that JSON) reads as one and hides its change; a bigger one by its size, ctime and inode after stat:, which no
   # dirty path's big: line carries, so a link to a big dirty file there does
   # not read as that file's line; anything else by its kind.
-  [ -z "${HERMY_AGENT_DIR-}" ] || for f in "$HERMY_AGENT_DIR/settings.json" "$HERMY_AGENT_DIR/settings.local.json"; do
+  for f in ${stg[@]+"${stg[@]}"}; do
     if [ ! -f "$f" ]; then v=$(kind "$f")
     elif [ "$(head -c 1048577 -- "$f" 2>/dev/null | wc -c)" -gt 1048576 ]; then sflav; v=$(stat -L "${sf[@]}" -- "$f" 2>/dev/null); v=stat:${v%%:*}; v=${v// /:}
     elif v=$(jqh -cS 'if any(..; type == "number" and (isnan or isinfinite)) then error("nonfinite") else . end | if (.permissions.allow | type) == "array" and (.permissions.allow | all(type == "string")) then del(.permissions.allow) else . end | del(.permissions[]? | select(. == [])) | if .permissions == {} then del(.permissions) else . end' < "$f" 2>/dev/null); then
@@ -1223,6 +1227,8 @@ snap() {
       # HEAD, and that is not the command's change to undo.
       case "$p" in .hermy.yml|.coddy.yml|"$legacy") continue ;; esac
       [ -z "${HERMY_AGENT_DIR-}" ] || case "$p" in "$HERMY_AGENT_DIR"/*) continue ;; esac
+      # A settings file is its own line's, with its own report, as the agent dir's.
+      for s in ${stg[@]+"${stg[@]}"}; do [ "$p" != "$s" ] || continue 2; done
       dp=$((dp+1))
       if [ ! -f "$p" ]; then clean "$p" || p=$(q "$p"); printf '%s gone\n' "$p"
       else case "$p" in *$'\n'*) nl[nn]=$p; nn=$((nn+1)) ;; *) files[n]=$p; n=$((n+1)) ;; esac; fi
@@ -1265,6 +1271,11 @@ if [ "${1-}" = snap ] || [ "${1-}" = trip ]; then
   fpb=20 SECONDS=0
   case "${HERMY_BUDGET-}" in ''|*[!0-9]*) ;; *) [ "${#HERMY_BUDGET}" -gt 4 ] || fpb=$HERMY_BUDGET ;; esac
   adb=$((10#$fpb / 2))
+  # The settings files the fingerprint holds (snap): the agent dir's, then
+  # each HERMY_SETTINGS entry, colon-separated, under the root; one that is
+  # empty, absolute, holds a .. or is not clean is ignored.
+  stg=(); [ -z "${HERMY_AGENT_DIR-}" ] || stg=("$HERMY_AGENT_DIR/settings.json" "$HERMY_AGENT_DIR/settings.local.json")
+  while IFS= read -r -d : f; do case "/$f/" in //|//*|*/../*) ;; *) ! clean "$f" || stg+=("$f") ;; esac; done <<<"${HERMY_SETTINGS-}:"
   # The snapshot is named by the tool use, else the session (shared); an id
   # that is not a plain word reads as none, so it cannot name a path outside
   # TMPDIR. Both read without jq: onboard installs jq inside one command, so
