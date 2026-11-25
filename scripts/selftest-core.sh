@@ -407,16 +407,18 @@ t 1 "fingerprint: and no post-index-change ran" test -e "$tmp/indexed"
 git config --unset core.hooksPath; rm -r .githooks
 # trip's refusal is one block verdict on stdout too, its text the stderr
 # message, so a host that shows the agent no stderr after a command reads it
-# there; with a jq that fails, built without it. blk [PATH]: a stray file
+# there; with a jq that fails, built without it. blk [PATH [FILE]]: a stray file
 # trips trip, its stdout and stderr kept; oneblock: that stdout is the one
 # block line, its text the stderr message.
 mkdir "$tmp/failjq"; printf '#!/bin/sh\nexit 1\n' > "$tmp/failjq/jq"; chmod +x "$tmp/failjq/jq"
-blk() { wire snap w; echo x > stray.txt; printf '{"call":"w"}' | PATH="${1-$PATH}" run trip > "$tmp/blk.out" 2> "$tmp/blk.err"; r=$?; rm stray.txt; return $r; }
+blk() { local f=${2-stray.txt}; wire snap w; echo x > "$f"; printf '{"call":"w"}' | PATH="${1-$PATH}" run trip > "$tmp/blk.out" 2> "$tmp/blk.err"; r=$?; rm -- "$f"; return $r; }
 oneblock() { [ "$(wc -l < "$tmp/blk.out")" -eq 1 ] && jq -e '.hermy == "block"' "$tmp/blk.out" && [ "$(jq -r .text "$tmp/blk.out")" = "$(cat "$tmp/blk.err")" ]; }
 t 2 "trip: a stray file trips" blk
 t 0 "trip: its stdout is one block verdict, its text the stderr message" oneblock
 t 2 "trip: with a jq that fails, a stray file trips" blk "$tmp/failjq:$PATH"
 t 0 "trip: and its verdict is built without jq, the same text" oneblock
+t 2 "trip: with a jq that fails, a stray file named with a quote and a backslash trips" blk "$tmp/failjq:$PATH" 'q"\x.txt'
+t 0 "trip: and its verdict, escaped without jq, is the same text" oneblock
 PATH="$tmp/nojq" t 2 "guard without jq fails closed" guard "$repo/.hermy.yml"
 echo 'guard: warn' >> .hermy.yml
 t 0 "warn: guard still asks on .hermy.yml" asks "$repo/.hermy.yml"

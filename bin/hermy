@@ -1459,10 +1459,15 @@ if [ "${1-}" = snap ] || [ "${1-}" = trip ]; then
   # stderr message: a host that shows the model no stderr on a PostToolUse
   # exit 2 (Copilot CLI) reads it there. guard and snap print none: their
   # exit 2 blocks the call whether or not a host reads their output.
+  # stderr first, so a verdict the shim cannot map loses no report. Without
+  # jq, a message free of control characters is escaped by sed: json walks
+  # it a character at a time, quadratic in a report naming thousands of paths.
   die() {
-    local m="hermy: $*" b
-    b=$(jqh -cn --arg t "$m" '{hermy: "block", text: $t}' 2>/dev/null) || b="{\"hermy\":\"block\",\"text\":\"$(json "$m")\"}"
-    emit "$b"; echo "$m" >&2; exit "$code"
+    local m="hermy: $*" b t
+    b=$(jqh -cn --arg t "$m" '{hermy: "block", text: $t}' 2>/dev/null) || {
+      case $m in *[[:cntrl:]]*) t=$(json "$m") ;; *) t=$(printf '%s' "$m" | LC_ALL=C sed -e 's/\\/\\\\/g' -e 's/"/\\"/g') ;; esac
+      b="{\"hermy\":\"block\",\"text\":\"$t\"}"; }
+    echo "$m" >&2; emit "$b"; exit "$code"
   }
   # The snapshot says whether the project was onboarded when the command
   # started, so trip never looks at the config first: the command may have
