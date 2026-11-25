@@ -2152,6 +2152,28 @@ mkdir -p "$tmp/sp"; git init -q "$tmp/sp"; cp "$dp/.hermy.yml" "$tmp/sp/"; mv "$
 t 2 "guard: a huge sparse .git at the root is refused within seconds" timeout 10 sh -c "printf '{\"session\":\"s\",\"paths\":[\"$tmp/sp/f\"]}' | HERMY_ROOT='$tmp/sp' '$here/bin/hermy' guard"
 t 2 "snap: and so is a command" timeout 10 sh -c "printf '{\"session\":\"s\",\"cwd\":\"$tmp/sp\",\"command\":\"true\"}' | HERMY_ROOT='$tmp/sp' '$here/bin/hermy' snap"
 rm -rf "$tmp/sp"
+# a FIFO where git's discovery opens a file (a .git's HEAD, commondir or
+# config, or the common dir's config) would hold root resolution's git for
+# good, past a timeout Copilot CLI lets through: every hook refuses at once
+mkdir -p "$tmp/ff" "$tmp/ffc/objects" "$tmp/ffc/refs"; git init -q "$tmp/ff"; cp "$dp/.hermy.yml" "$tmp/ff/"
+for f in HEAD commondir config ../../ffc/config; do
+  p="$tmp/ff/.git/$f"; [ "$f" = "${f#../}" ] || echo "$tmp/ffc" > "$tmp/ff/.git/commondir"
+  [ ! -e "$p" ] || mv "$p" "$tmp/ff.save"; mkfifo "$p"
+  for v in guard snap trip; do t 2 "$v: a FIFO at .git/$f is refused within seconds" timeout 10 sh -c "printf '{\"session\":\"s\",\"paths\":[\"$tmp/ff/f\"],\"cwd\":\"$tmp/ff\",\"command\":\"true\"}' | HERMY_ROOT='$tmp/ff' '$here/bin/hermy' $v"; done
+  rm -f "$p"; [ ! -e "$tmp/ff.save" ] || mv "$tmp/ff.save" "$p"; [ "$f" = "${f#../}" ] || rm "$tmp/ff/.git/commondir"
+done
+t 0 "guard: and with none, a file outside the project passes" sh -c "printf '{\"session\":\"s\",\"paths\":[\"$tmp/ffo\"]}' | HERMY_ROOT='$tmp/ff' '$here/bin/hermy' guard"
+# an edit landing in the hermy install the hooks run from is refused, in
+# either guard mode; an install inside the project leaves its rules as they are
+gi() { printf '{"session":"s","paths":["%s"]}' "$1" | HERMY_ROOT="$2" HERMY_AGENT_DIR=.claude "$3" guard; }
+for m in block warn; do
+  [ "$m" = block ] || echo "guard: warn" >> "$tmp/ff/.hermy.yml"
+  t 2 "guard: an edit in the hermy install the hooks run from is refused, guard: $m" gi "$here/scripts/hook.sh" "$tmp/ff" "$here/bin/hermy"
+  t 2 "guard: and one reaching it through a link, guard: $m" sh -c "ln -sfn '$here/scripts' '$tmp/ffl' && printf '{\"session\":\"s\",\"paths\":[\"$tmp/ffl/hook.sh\"]}' | HERMY_ROOT='$tmp/ff' '$here/bin/hermy' guard"
+done
+cp -R "$here/bin" "$here/scripts" "$tmp/ff/"
+t 0 "guard: with the install inside the project, its agent dir stays editable" gi "$tmp/ff/.claude/x" "$tmp/ff" "$tmp/ff/bin/hermy"
+rm -rf "$tmp/ff" "$tmp/ffc" "$tmp/ffl"
 mkdir -p "$tmp/hA"; git init -q "$tmp/hA"; printf '#!/bin/sh\ntouch "%s/hMark"\n' "$tmp" > "$tmp/hfsm"; chmod +x "$tmp/hfsm"; git -C "$tmp/hA" config core.fsmonitor "$tmp/hfsm"
 for hd in ' refs/heads/main' $'\trefs/heads/main' $'\nrefs/heads/main'; do
   P="$tmp/hA/proj"; rm -rf "$P"; mkdir -p "$P/.git/objects" "$P/.git/refs" "$P/src/deep"; cp "$dp/.hermy.yml" "$P/"

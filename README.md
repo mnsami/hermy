@@ -107,6 +107,8 @@ copilot plugin install <path to a hermy checkout>
 - The skills run `bin/hermy` from the plugin's install directory (`copilot plugin install` copies it under
   `~/.copilot/installed-plugins/`), outside your project. Pass `--add-dir '<plugin dir>'`: `--allow-all-tools`
   does not cover a path outside the working directory, and a skill stops and says so when that call is denied.
+- `--add-dir` also lets Copilot's tools write that directory, which holds the hooks themselves. The edit guard
+  refuses an edit there, but a shell command can rewrite a hook unseen and turn off every hook after it.
 
 ## Quick start
 
