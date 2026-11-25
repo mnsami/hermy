@@ -1154,11 +1154,19 @@ t 0 "copilot: an apply_patch in the claimed worktree passes, its CRs trimmed" co
 t 2 "copilot: an apply_patch string naming no file is refused" cophook guard "$(jq -cn --arg c "$repo" '{tool_name: "Edit", tool_input: "*** Begin Patch\n*** End Patch", cwd: $c, session_id: "sess-a"}')"
 # Copilot's parser (codex's) trims whitespace around a hunk header, so a
 # padded header counts and a path is held trimmed too; and a patch of some
-# hundreds of KB is read in time, not past the guard's deadline.
-craw() { jq -cn --arg p "$1" --arg c "$repo" '{tool_name: "Edit", tool_input: $p, cwd: $c, session_id: "sess-a", tool_use_id: "cr"}'; }
+# hundreds of KB is read in time, not past the guard's deadline. The patch
+# reaches jq on stdin: Linux caps one argument at 128 KiB. intime: the
+# command's exit, when it ends within five seconds; 124 otherwise.
+craw() { printf %s "$1" | jq -Rsc --arg c "$repo" '{tool_name: "Edit", tool_input: ., cwd: $c, session_id: "sess-a", tool_use_id: "cr"}'; }
+intime() { local s=$SECONDS r; "$@"; r=$?; [ $((SECONDS - s)) -le 5 ] || r=124; return $r; }
 t 2 "copilot: an apply_patch header with whitespace before it, after an Add File in the claimed worktree, is refused" cophook guard "$(craw $'*** Begin Patch\n*** Add File: .worktrees/78/b.txt\n+x\n  *** Update File: README.md\n@@\n-hi\n+ho\n*** End Patch')"
 t 2 "copilot: an apply_patch path with trailing whitespace is held trimmed (.git) too" cophook guard "$(craw $'*** Begin Patch\n*** Update File: .worktrees/78/.git \n@@\n-hi\n+ho\n*** End Patch')"
-t 0 "copilot: an apply_patch of 340 KB in the claimed worktree passes in time" cophook guard "$(craw "$(awk 'BEGIN { print "*** Begin Patch\n*** Update File: .worktrees/78/a.txt\n@@"; for (i = 0; i < 8000; i++) printf "-hello world line %d\n+hello there %d\n", i, i; print "*** End Patch" }')")"
+t 0 "copilot: an apply_patch of 340 KB in the claimed worktree passes in time" intime cophook guard "$(craw "$(awk 'BEGIN { print "*** Begin Patch\n*** Update File: .worktrees/78/a.txt\n@@"; for (i = 0; i < 8000; i++) printf "-hello world line %d\n+hello there %d\n", i, i; print "*** End Patch" }')")"
+t 2 "copilot: an apply_patch path holding a 200,000-space run is refused in time, its trim linear" intime cophook guard "$(craw "*** Begin Patch"$'\n'"*** Update File: .worktrees/78/a$(printf '%200000s' '')x"$'\n'"*** End Patch")"
+# Every path a patch writes is read: a Move to's and a Delete File's, each
+# after a file in the claimed worktree, which alone would pass.
+t 2 "copilot: an apply_patch moving a claimed worktree's file to README.md is refused" cophook guard "$(craw $'*** Begin Patch\n*** Update File: .worktrees/78/a.txt\n*** Move to: README.md\n@@\n-hi\n+ho\n*** End Patch')"
+t 2 "copilot: an apply_patch deleting README.md after an Add File in the claimed worktree is refused" cophook guard "$(craw $'*** Begin Patch\n*** Add File: .worktrees/78/b.txt\n+x\n*** Delete File: README.md\n*** End Patch')"
 copask() { cophook guard "$(cwrite "$repo/.hermy.yml")" && jq -e '.hookSpecificOutput.permissionDecision == "ask"' "$tmp/cop.out"; }
 t 0 "copilot: a Write of the config asks" copask
 rm -r .worktrees/78 .git/hermy/78

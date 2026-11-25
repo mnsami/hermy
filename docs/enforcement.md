@@ -94,7 +94,7 @@ first, and its `hooks/copilot.json`. Both run the same launcher, shim and core. 
 | Layer | Claude Code | Copilot CLI |
 |---|---|---|
 | Edit guard | blocks, the agent told why | blocks, the agent told only `hook exited with code 2` |
-| Config ask (`.hermy.yml`) | asks, with the reason | asks, without the reason; headless, the ask is a deny |
+| Config ask (`.hermy.yml`) | asks, with the reason | asks, without the reason; headless, the ask is a deny that shows the reason |
 | Shell tripwire | warns after the command, the report to the agent | warns after the command, the report in place of the command's output |
 | Config lock | puts the config back and warns | puts the config back and warns, as the tripwire does |
 | Git hooks | block, a sandboxed command cannot rewrite them | block, but inside `--sandbox` a command can rewrite them |

@@ -72,6 +72,9 @@ export HERMY_ROOT HERMY_SESSION HERMY_PID HERMY_AGENT_DIR HERMY_HOOKS
 # header with leading whitespace counts too, and each path is held as
 # written and trimmed. Split as a plain string, not a regex: jq's regex
 # split is quadratic, and a guard past its timeout lets Copilot's edit through.
+# Trimmed by one match anchored at the start, for the same reason: an
+# unanchored sub of trailing whitespace is quadratic in a run of it inside
+# the path.
 # When jq is missing or fails, the raw payload rides along after a word that
 # is no JSON, so the core's jq fails on it and refuses.
 hermy_in() {
@@ -80,7 +83,7 @@ hermy_in() {
   id=$(sed -n 's/.*"tool_use_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$r" 2>/dev/null | head -n1)
   ss=$(sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$r" 2>/dev/null | head -n1)
   ss=${ss//[[:cntrl:]]/}
-  if command -v jq >/dev/null && o=$(jqh -cn --arg c "$id" --arg s "$ss" '[inputs] | if length == 1 then .[0] | {paths: [.tool_input | if type == "string" then [split("\n")[] | select(contains("*** ")) | rtrimstr("\r") | capture("^[\\s\u001c-\u001f]*\\*\\*\\* (?:(?:Update|Add|Delete) File|Move to): (?<p>.+)$") | .p | (., sub("[\\s\u001c-\u001f]+$"; ""))] | unique[] else objects | (.file_path, .notebook_path, .path) | select(. != null) | if type == "string" then . else error("a path that is not a string") end end], command: ((.tool_input | objects | .command) // ""), cwd: (.cwd // ""), call: $c, session: (.session_id | if type == "string" then (if [explode[] | select((. < 48 or . > 57) and (. < 65 or . > 90) and (. < 97 or . > 122) and . != 45 and . != 95)] == [] then . else $s end) else $s end)} else error("not one value") end' <<<"$r" 2>/dev/null); then
+  if command -v jq >/dev/null && o=$(jqh -cn --arg c "$id" --arg s "$ss" '[inputs] | if length == 1 then .[0] | {paths: [.tool_input | if type == "string" then [split("\n")[] | select(contains("*** ")) | rtrimstr("\r") | capture("^[\\s\u001c-\u001f]*\\*\\*\\* (?:(?:Update|Add|Delete) File|Move to): (?<p>.+)$") | .p | (., capture("^(?<t>(?:.*[^\\s\u001c-\u001f])?)[\\s\u001c-\u001f]*$").t)] | unique[] else objects | (.file_path, .notebook_path, .path) | select(. != null) | if type == "string" then . else error("a path that is not a string") end end], command: ((.tool_input | objects | .command) // ""), cwd: (.cwd // ""), call: $c, session: (.session_id | if type == "string" then (if [explode[] | select((. < 48 or . > 57) and (. < 65 or . > 90) and (. < 97 or . > 122) and . != 45 and . != 95)] == [] then . else $s end) else $s end)} else error("not one value") end' <<<"$r" 2>/dev/null); then
     printf '%s\n' "$o"
   else
     printf 'hermy-unreadable %s "call":"%s","session":"%s"\n' "$r" "$id" "$ss"
