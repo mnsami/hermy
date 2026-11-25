@@ -131,6 +131,28 @@ In a throwaway repo outside the checkout, onboarded with `worktree: git`, `copil
 
 Results go in this document and the PR. The probe and script stay outside the repository, as the spike's did.
 
+#### Results (Copilot CLI 1.0.115, headless, 2026-11-25, this branch as `--plugin-dir`, no `AGENTS.md` in the scratch repo)
+
+| row | result |
+|---|---|
+| 3a2 Edit of `README.md` in the main checkout | refused: `Denied by preToolUse hook: hook exited with code 2`, file unchanged |
+| 3b create `.worktrees/99/x.txt`, no claim | refused, the same message, no file |
+| 3c Edit of `.hermy.yml` | denied: `Denied by preToolUse hook (unable to ask user for confirmation): Editing .hermy.yml changes the hermy guardrails. Allow it only if you asked for this change (/hermy:config).` (headless shows the ask's reason) |
+| 3d shell `echo x >> README.md` | reported: the terminal shows `! hermy: that command changed the main checkout: README.md. …`, and the model quoted `Tool result blocked: hermy: that command changed the main checkout: README.md. Issue work belongs in .worktrees/<issue>/. Undo it.` |
+| 3e shell `rm .hermy.yml` | restored; the model quoted the config lock's report |
+| 3g two parallel shell calls | both ran, no hook text, no lost snapshot |
+| `Edit` (string replace) of `README.md` | refused |
+| `apply_patch` (`gpt-5.3-codex`, `toolName: apply_patch`, `*** Begin Patch\n*** Update File: README.md…`) | refused |
+| `/hermy:config` through its fallback line | ran `HERMY_AGENT_DIR=.claude "<plugin dir>/bin/hermy" config`, `status`, `migrate` with the plugin dir placed outside the project; printed the config |
+| `timeout: 60`, hook sleeping 40 s then exit 2 | blocked: 60 is honoured past the 30 s default |
+| `timeout: 10`, hook sleeping 15 s | killed, the write went through: a timeout fails open |
+| Claude Code (`claude -p`, this branch) shell `echo x >> README.md` | `trip`'s report reaches the model once, from stderr, as before: the `block` stdout line changes nothing there |
+
+Worst case, timed through the launcher on macOS, bash 5 (host-independent):
+
+- `snap` on a main checkout of 200,000 untracked files: 20 s, its budget, then the command runs unchecked with a note; `trip` refuses it (exit 2) in 0 s with the `block` reason. Inside `snap`'s 60 s timeout.
+- `guard` on an `apply_patch` of 64 paths that all pass: 5.7 s; one path: 0.16 s. Inside its 10 s timeout; past 8 s the guard refuses before the next path.
+
 ## Calls made by the designer (check these)
 
 - `HERMY_AGENT_DIR=.claude` on Copilot's hook side: Copilot reads `.claude/settings*.json` hooks too, so the fingerprint watches them; the cost is Copilot's Edit tool writing `.claude/` unprompted.
