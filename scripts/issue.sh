@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Claude Code adapter: hands Claude's environment to the core as its HERMY_*
+# Claude Code adapter, Copilot CLI's too (hooks/copilot.json runs it as
+# hooks/hooks.json does, and Copilot sets CLAUDE_PROJECT_DIR in a hook's
+# environment): hands Claude's environment to the core as its HERMY_*
 # inputs, always, so an inherited HERMY_* value (a settings env, a hostile
 # shell) is ignored, drops every GIT_* but the identity, ssh and credential-prompt ones (a
 # GIT_DIR there would resolve the root in another repository, where no
@@ -61,8 +63,11 @@ export HERMY_ROOT HERMY_SESSION HERMY_PID HERMY_AGENT_DIR HERMY_HOOKS
 # sed read it on both branches: its JSON spelling (a \u escape kept, not
 # decoded), control characters dropped, which jq would print as \u escapes
 # on one side alone.
-# paths holds file_path and notebook_path both, when both are there, so the
-# guard holds the edit to each; a non-null one that is no string fails jq.
+# paths holds file_path, notebook_path and path (Copilot CLI's), each that is
+# there, so the guard holds the edit to each; a non-null one that is no
+# string fails jq. A tool_input that is a string is Copilot CLI's apply_patch:
+# paths holds every file its Update File, Add File, Delete File and Move to
+# lines name, and none for a string naming none, which the guard refuses.
 # When jq is missing or fails, the raw payload rides along after a word that
 # is no JSON, so the core's jq fails on it and refuses.
 hermy_in() {
@@ -71,7 +76,7 @@ hermy_in() {
   id=$(sed -n 's/.*"tool_use_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$r" 2>/dev/null | head -n1)
   ss=$(sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$r" 2>/dev/null | head -n1)
   ss=${ss//[[:cntrl:]]/}
-  if command -v jq >/dev/null && o=$(jqh -cn --arg c "$id" --arg s "$ss" '[inputs] | if length == 1 then .[0] | {paths: [.tool_input | objects | (.file_path, .notebook_path) | select(. != null) | if type == "string" then . else error("a path that is not a string") end], command: (.tool_input.command // ""), cwd: (.cwd // ""), call: $c, session: (.session_id | if type == "string" then (if [explode[] | select((. < 48 or . > 57) and (. < 65 or . > 90) and (. < 97 or . > 122) and . != 45 and . != 95)] == [] then . else $s end) else $s end)} else error("not one value") end' <<<"$r" 2>/dev/null); then
+  if command -v jq >/dev/null && o=$(jqh -cn --arg c "$id" --arg s "$ss" '[inputs] | if length == 1 then .[0] | {paths: [.tool_input | if type == "string" then splits("\n") | rtrimstr("\r") | capture("^\\*\\*\\* (?:(?:Update|Add|Delete) File|Move to): (?<p>.+)$") | .p else objects | (.file_path, .notebook_path, .path) | select(. != null) | if type == "string" then . else error("a path that is not a string") end end], command: ((.tool_input | objects | .command) // ""), cwd: (.cwd // ""), call: $c, session: (.session_id | if type == "string" then (if [explode[] | select((. < 48 or . > 57) and (. < 65 or . > 90) and (. < 97 or . > 122) and . != 45 and . != 95)] == [] then . else $s end) else $s end)} else error("not one value") end' <<<"$r" 2>/dev/null); then
     printf '%s\n' "$o"
   else
     printf 'hermy-unreadable %s "call":"%s","session":"%s"\n' "$r" "$id" "$ss"
@@ -79,11 +84,17 @@ hermy_in() {
 }
 # The core's verdict line as Claude Code's hook JSON, by parameter expansion
 # alone: the text is already a JSON string, so it moves over byte for byte.
-# A line that is neither verdict refuses the call (exit 2), so an ask is
+# trip's block, printed before its exit 2, is the decision block a
+# PostToolUse hook prints: Copilot CLI reads it on that exit and shows the
+# model its reason, which it does not with stderr; Claude Code reads stderr.
+# A line that is no verdict refuses the call (exit 2), so an ask is
 # never let through without its permissionDecision.
 hermy_out() {
-  local l=$1 n='{"hermy":"note","text":' a='{"hermy":"ask","text":'
-  if [[ $l == "$n"*'}' ]]; then
+  local l=$1 n='{"hermy":"note","text":' a='{"hermy":"ask","text":' b='{"hermy":"block","text":'
+  if [[ $l == "$b"*'}' ]]; then
+    l=${l#"$b"}
+    printf '%s\n' "{\"decision\":\"block\",\"reason\":${l%\}}}"
+  elif [[ $l == "$n"*'}' ]]; then
     l=${l#"$n"}
     printf '%s\n' "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":${l%\}}}}"
   elif [[ $l == "$a"*'}' ]]; then

@@ -78,13 +78,49 @@ Each layer has the same rows. A row is left out when it does not apply.
   An admin who wants managed hooks alone keeps hermy's by force-enabling `hermy@hermy` in the managed `enabledPlugins`.
 - With the hooks off, the edit guard, the tripwire and the config lock are off.
   Only the git hooks, branch protection and the PR check hold.
-- The edit guard, the tripwire and the config lock are Claude Code hooks.
-  Another agent that runs the skills from `~/.hermy` (Codex, Cursor, Copilot CLI, Gemini CLI, Antigravity CLI)
+- The edit guard, the tripwire and the config lock are Claude Code and Copilot CLI hooks ([per host](#per-host)).
+  Another agent that runs the skills from `~/.hermy` (Codex, Cursor, Gemini CLI, Antigravity CLI)
   never has them. It gets only the git hooks, branch protection and the PR check.
 - Each shell hook leaves a mark for its session. `/hermy:start` looks for it before it creates or claims the worktree.
   With none, it prints `hooks: off` and the causes, and asks you before it claims the issue.
 - That check reads the session's own mark. A session with its hooks off is caught only when it runs `/hermy:start`
   itself, and a shell command can make the mark. It is a check, not a guardrail.
+
+## Per host
+
+Claude Code reads `.claude-plugin/plugin.json` and `hooks/hooks.json`. Copilot CLI reads `.github/plugin/plugin.json`
+first, and its `hooks/copilot.json`. Both run the same launcher, shim and core. Measured on Copilot CLI 1.0.114 and 1.0.115.
+
+| Layer | Claude Code | Copilot CLI |
+|---|---|---|
+| Edit guard | blocks, the agent told why | blocks, the agent told only `hook exited with code 2` |
+| Config ask (`.hermy.yml`) | asks, with the reason | asks, without the reason; headless, the ask is a deny |
+| Shell tripwire | warns after the command, the report to the agent | warns after the command, the report in place of the command's output |
+| Config lock | puts the config back and warns | puts the config back and warns, as the tripwire does |
+| Git hooks | block, a sandboxed command cannot rewrite them | block, but inside `--sandbox` a command can rewrite them |
+| PR check | blocks the merge once you require it | the same |
+| Branch protection | blocks | the same |
+
+On Copilot CLI:
+
+- In a folder Copilot does not trust, no plugin hook runs and nothing says so: the edit guard, the tripwire and the
+  config lock are inert. An interactive session asks for trust at start; a headless run needs `--trust-folder`.
+- A timeout lets the call through, on every event. The timeouts are 10 seconds for the edit guard and 60 for the
+  shell check and the tripwire. hermy's own budgets keep the edit guard at about 9 seconds and the record of the main
+  checkout at 20. A main checkout too large for 20 seconds runs every command unchecked, each reported after it ran
+  (300,000 untracked files take about 25 seconds under bash 5).
+- A hermy crash in the edit guard or the shell check still refuses the call: any exit other than 0 denies there.
+- A refusal by the edit guard or the shell check reaches the agent as `Denied by preToolUse hook: hook exited with
+  code 2`, without the reason. The `AGENTS.md` block names `/hermy:start` as the way in.
+- The tripwire's report replaces the command's output: the agent sees `Tool result blocked:` and the report, not
+  what the command printed. A failing command fires the same hook as one that succeeds.
+- The hooks run for a sub-agent's calls too.
+- Under `--sandbox` the hooks run inside the sandbox, and a shell command can write `.git/hooks` and `.git/config`.
+- There is no session start hook, so the git hooks run the `bin/hermy` of the install that last ran `/hermy:start`.
+- Copilot's edit tool writes `.claude/` with no prompt, settings files included. Copilot reads hooks from
+  `.claude/settings.json` and `settings.local.json` too; the tripwire reports a shell write to either.
+- A claim taken on Copilot names no session (#414), so the edit guard does not hold edits in its worktree to one
+  session.
 
 ## Platform
 

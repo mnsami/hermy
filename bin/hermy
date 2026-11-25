@@ -1455,6 +1455,15 @@ if [ "${1-}" = snap ] || [ "${1-}" = trip ]; then
     [ -z "$un" ] || ctx "$un"; exit 0
   fi
   code=2 msg="" keep=""
+  # Each refusal from here is also one block verdict on stdout, its text the
+  # stderr message: a host that shows the model no stderr on a PostToolUse
+  # exit 2 (Copilot CLI) reads it there. guard and snap print none: their
+  # exit 2 blocks the call whether or not a host reads their output.
+  die() {
+    local m="hermy: $*" b
+    b=$(jqh -cn --arg t "$m" '{hermy: "block", text: $t}' 2>/dev/null) || b="{\"hermy\":\"block\",\"text\":\"$(json "$m")\"}"
+    emit "$b"; echo "$m" >&2; exit "$code"
+  }
   # The snapshot says whether the project was onboarded when the command
   # started, so trip never looks at the config first: the command may have
   # removed it, or made it. No snapshot, or one missing a path's record, or

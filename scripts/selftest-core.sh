@@ -51,7 +51,7 @@ mkdir .claude sub
 t 1 "the core reads no CLAUDE_ variable" grep -q CLAUDE_ "$here/bin/hermy"
 # nor an input under the name from before the rename (spelled as a class, so this line holds no old name)
 t 1 "the core reads no input under the old name" grep -q 'C[O]DDY_' "$here/bin/hermy"
-t 1 "the core names no host payload key or envelope" grep -qE 'tool_input|tool_use_id|session_id|hookSpecificOutput|permissionDecision|additionalContext|hookEventName' "$here/bin/hermy"
+t 1 "the core names no host payload key or envelope" grep -qE 'tool_input|tool_use_id|session_id|hookSpecificOutput|permissionDecision|additionalContext|hookEventName|"decision"' "$here/bin/hermy"
 t 0 "root: from HERMY_ROOT" rooted /
 t 0 "root: from the working directory without HERMY_ROOT" rooted "$repo" -u HERMY_ROOT
 t 0 "root: from a subdirectory without HERMY_ROOT" rooted "$repo/sub" -u HERMY_ROOT
@@ -405,6 +405,18 @@ git config core.hooksPath .githooks; touch README.md
 tripped 0 "fingerprint: a touched tracked file under a core.hooksPath in the project is quiet" 'touch README.md'
 t 1 "fingerprint: and no post-index-change ran" test -e "$tmp/indexed"
 git config --unset core.hooksPath; rm -r .githooks
+# trip's refusal is one block verdict on stdout too, its text the stderr
+# message, so a host that shows the agent no stderr after a command reads it
+# there; with a jq that fails, built without it. blk [PATH]: a stray file
+# trips trip, its stdout and stderr kept; oneblock: that stdout is the one
+# block line, its text the stderr message.
+mkdir "$tmp/failjq"; printf '#!/bin/sh\nexit 1\n' > "$tmp/failjq/jq"; chmod +x "$tmp/failjq/jq"
+blk() { wire snap w; echo x > stray.txt; printf '{"call":"w"}' | PATH="${1-$PATH}" run trip > "$tmp/blk.out" 2> "$tmp/blk.err"; r=$?; rm stray.txt; return $r; }
+oneblock() { [ "$(wc -l < "$tmp/blk.out")" -eq 1 ] && jq -e '.hermy == "block"' "$tmp/blk.out" && [ "$(jq -r .text "$tmp/blk.out")" = "$(cat "$tmp/blk.err")" ]; }
+t 2 "trip: a stray file trips" blk
+t 0 "trip: its stdout is one block verdict, its text the stderr message" oneblock
+t 2 "trip: with a jq that fails, a stray file trips" blk "$tmp/failjq:$PATH"
+t 0 "trip: and its verdict is built without jq, the same text" oneblock
 PATH="$tmp/nojq" t 2 "guard without jq fails closed" guard "$repo/.hermy.yml"
 echo 'guard: warn' >> .hermy.yml
 t 0 "warn: guard still asks on .hermy.yml" asks "$repo/.hermy.yml"
