@@ -5,9 +5,12 @@ This page says what hermy defends against and what it does not, and how to sort 
 
 The boundary is the host's sandbox for shell commands and the edit guard and permission prompts for the file tools.
 Inside it is anything an agent can do through its tools, honest or injected.
-Outside it is anything that needs a shell write the sandbox blocks, or no sandbox at all.
-The sandbox bounds shell commands only. The file tools (Edit, Write) are bounded by the edit guard and the host's
-permission prompts, which `bypassPermissions` and auto mode skip.
+Outside it is anything that needs a shell write the sandbox blocks, no sandbox at all, or `bypassPermissions`.
+The sandbox bounds shell commands and their child processes only. The file tools (Edit, Write) run outside it, under
+the edit guard and the host's permission rules, which auto mode loosens and `bypassPermissions` switches off.
+On Claude Code, `sandbox.allowUnsandboxedCommands: false` keeps a command from leaving the sandbox at all, which is
+what keeps the boundary in place. Unless it is false, a command can be rerun outside the sandbox, with a prompt
+unless the user has switched the prompts off.
 
 ## In model
 
@@ -29,7 +32,7 @@ An injected agent:
   on purpose, with the same tools and the same sandbox.
 - It can plant what a sandboxed command can write: a `bash` or `jq` in the project, a FIFO at a snapshot name,
   a link where a hook reads, a `commondir` in a `.git`, a rewritten lock or settings file.
-- Under `bypassPermissions` or auto mode, a file-tool write outside the project, which the edit guard lets through
+- Under auto mode, a file-tool write outside the project, which the edit guard lets through
   ([Edit guard](enforcement.md#edit-guard)) and the sandbox does not see: the user's git or jj config, say.
 
 ## Out of model
@@ -38,7 +41,10 @@ Nothing in hermy is built to stop these. A report that needs one is not a hermy 
 
 - A shell write the sandbox blocks. The agent cannot make it, so no layer has to catch it.
   A file-tool write is not one of these: the sandbox does not bound it.
-- The sandbox off or bypassed, or a host with none on. One command can then remove the config and every leftover
+- `bypassPermissions`, whole. The user has switched off the host's prompts, and with them the prompt on a command
+  rerun outside the sandbox, so nothing in hermy is required to hold there.
+- The sandbox off or bypassed (a command that auto mode lets run outside it, or one rerun outside it unless
+  `sandbox.allowUnsandboxedCommands` is false), or a host with none on. One command can then remove the config and every leftover
   ([Config lock](enforcement.md#config-lock)), and the hooks' own `PATH` and install are within reach.
 - A background or hand-run process. The tripwire sees a command at its start and its end
   ([what it doesn't catch](enforcement.md#shell-tripwire)).
@@ -54,7 +60,8 @@ Copilot CLI's `--sandbox` does not, so there a sandboxed command can rewrite the
 
 Three things hold whatever the agent does inside the sandbox, which is why a gap in the local layers is not fatal.
 
-- The sandbox, for shell commands. It keeps what it blocks out of reach: on Claude Code, `.git/hooks` and `.git/config`, where the
+- The sandbox, for shell commands, while they cannot leave it (`sandbox.allowUnsandboxedCommands: false` on Claude
+  Code). It keeps what it blocks out of reach: on Claude Code, `.git/hooks` and `.git/config`, where the
   git hooks are named ([Git hooks](enforcement.md#git-hooks)). It is the host's, not hermy's, and it differs per host.
 - Branch protection. It holds a push to the default branch that a command makes with `--no-verify`, under jj, or by
   `git send-pack` ([Branch protection](enforcement.md#branch-protection)).
@@ -91,8 +98,9 @@ Ask three questions in order.
 
 A gap already listed in enforcement.md or [enforcement-limits.md](enforcement-limits.md) is known. Link it and do not
 file it again. If it is in model and no remote layer holds it, it is a bug already recorded, open until fixed or its rule
-is cut, as the FIFO's remainder below. `bypassPermissions` and auto mode skip the host's prompts, not the sandbox,
-so what they let through a shell command is in model, and so is every file-tool write the edit guard lets through.
+is cut, as the FIFO's remainder below. `bypassPermissions` is out of model, whole. Auto mode stays in model for what it lets
+through inside the sandbox and through the file tools, every file-tool write the edit guard lets through included;
+a command it lets run outside the sandbox is the sandbox bypassed, so out of model.
 
 Worked examples, each checked against enforcement.md:
 
@@ -119,8 +127,9 @@ Worked examples, each checked against enforcement.md:
   recorded. Do not file it again.
 - **A shell write inside another session's worktree, or an unclaimed one.** In model, and no remote layer holds it.
   Listed under the tripwire's "Doesn't catch" ([Shell tripwire](enforcement.md#shell-tripwire)): already recorded.
-- **A file-tool write of the user's git or jj config under `bypassPermissions` or auto mode.** In model: the edit
-  guard lets files outside the project through, and the prompts that would gate the write are skipped. A Write puts
+- **A file-tool write of the user's git or jj config under auto mode.** In model: the edit
+  guard lets files outside the project through, and auto mode loosens the prompts that would gate the write.
+  Under `bypassPermissions` the same write is out of model. A Write puts
   `core.fsmonitor` into `~/.gitconfig` or `$XDG_CONFIG_HOME/git/config`. `homes()` refuses only a `HOME` or
   `XDG_CONFIG_HOME` that lies in the project, so the next `snap` runs `git status`, which runs that program outside
   the sandbox. No remote layer holds it, and enforcement.md does not record it: a bug.
