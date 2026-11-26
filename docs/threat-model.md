@@ -68,8 +68,10 @@ inside the project, refuse a FIFO before git runs, treat a link or `commondir` i
 config against a snapshot rather than trust it. Each costs code and sometimes a refusal that blocks a legitimate
 toolchain ([bash and `PATH`](enforcement.md#bash-and-path)). That hardening stays.
 
-Out of scope with it: an injected agent cannot be stopped from anything the sandbox allows and no remote layer holds.
-Claims are cooperative, and the hooks are [not a sandbox](enforcement.md#what-holds-against-what).
+What an injected agent does through its tools is sorted like any other gap (below): held by nothing, it is a bug.
+The ceilings stay recorded, though: claims are cooperative, and the hooks are
+[not a sandbox](enforcement.md#what-holds-against-what), so an agent set on getting round a cooperative rule
+is a ceiling where a remote layer holds the outcome, not a bug in the hook.
 
 ## Sorting an issue
 
@@ -91,7 +93,7 @@ Worked examples, each checked against enforcement.md:
   That remainder is a bug already recorded ([per host](enforcement.md#per-host)). Do not file it again.
 - **A `commondir` written into the project's `.git`.** In model: the sandbox does not protect it. It would point git
   at another repository's config. `guard`, `snap` and `trip` refuse before any git call and name the file to remove
-  by hand. Held locally, so no bug.
+  by hand. Held locally, so no bug. enforcement.md does not describe this refusal; CLAUDE.md's guardrails section does.
 - **A planted `bash` on `PATH`.** In model: a command can write `.venv/bin/bash`. The hooks drop every `PATH` entry
   inside the project before they look up `bash`, `git`, `jq` or `jj`
   ([bash and `PATH`](enforcement.md#bash-and-path)). Held locally, so no bug.
