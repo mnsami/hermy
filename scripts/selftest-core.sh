@@ -501,20 +501,21 @@ rm -r .github; cp "$tmp/exclude" .git/info/exclude
 PATH="$tmp/nojq" t 2 "guard without jq fails closed" guard "$repo/.hermy.yml"
 # An edit of a HERMY_SETTINGS file, which can turn every hook off as the
 # config can, is asked about as the config is, in both modes (sasks below,
-# after warn): by its own spelling, one with ./ and .., a case-folded name
-# and a link from outside the project. Without HERMY_SETTINGS it is a
-# main-checkout path. A settings path that is itself a link, symbolic or
-# hard, is not asked about: an edit by either name is held where it lands,
-# so .git's files and the hermy install stay refused, and a link to the
-# main checkout is held as the main checkout.
+# after warn): by its own spelling, one with ./ and .., a case-folded name,
+# a link from outside the project and wherever a settings path that is a
+# link lands (the main checkout, a copy in a claimed worktree). Without
+# HERMY_SETTINGS it is a main-checkout path. The ask comes after the .git,
+# hard-link and install refusals, so a settings path, or a directory above
+# it, linked into .git or the hermy install leaves both names refused, and a
+# .. after a missing directory, which the walk refuses, is refused.
 mkdir -p .github/copilot; echo '{}' > .github/copilot/settings.json; ln -s "$repo/.github/copilot/settings.json" "$tmp/sl"
 sask() { local out; out=$(HERMY_SETTINGS=$cs guard "$1") && jq -e '.hermy == "ask" and (.text | contains("settings for this project, can turn hermy"))' <<<"$out"; }
 sg() { HERMY_SETTINGS=$cs guard "$1"; }
-snote() { local out; out=$(sg "$1") && jq -e '.hermy == "note"' <<<"$out"; }
 sasks() {
   t 0 "settings: guard asks on .github/copilot/settings.json, guard: $1" sask "$repo/.github/copilot/settings.json"
   t 0 "settings: and on settings.local.json, guard: $1" sask "$repo/.github/copilot/settings.local.json"
-  t 0 "settings: spelled with ./ and .., guard: $1" sask "$repo/./.github/x/../copilot/settings.json"
+  t 0 "settings: spelled with ./ and .., guard: $1" sask "$repo/./.github/copilot/../copilot/settings.json"
+  t 2 "settings: and with a .. after a missing directory, refused, not asked, guard: $1" sg "$repo/./.github/x/../copilot/settings.json"
   t 0 "settings: by a case-folded name, guard: $1" sask "$repo/.github/copilot/Settings.JSON"
   t 0 "settings: through a link from outside the project, guard: $1" sask "$tmp/sl"
   HERMY_ASK=0 t 2 "settings: and refused where the host cannot ask, guard: $1" env HERMY_SETTINGS="$cs" "$here/bin/hermy" guard <<<"{\"session\":\"sess-a\",\"paths\":[\"$repo/.github/copilot/settings.json\"]}"
@@ -529,9 +530,20 @@ sasks() {
   t 2 "settings: with settings.json a link into the hermy install, its file is refused, guard: $1" sg "$here/bin/hermy"
   t 2 "settings: and so is settings.json, guard: $1" sg "$repo/$sj"
   rm "$sj"; ln -s ../../README.md "$sj"
-  if [ "$1" = block ]; then t 2 "settings: with settings.json a link to README.md, it is refused as the main checkout, not asked, guard: block" sg "$repo/$sj"
-  else t 0 "settings: with settings.json a link to README.md, it is let through with a warning, not asked, guard: warn" snote "$repo/$sj"; fi
-  rm "$sj"; mv "$tmp/sj" "$sj"
+  t 0 "settings: with settings.json a link to README.md, it is asked about, guard: $1" sask "$repo/$sj"
+  t 0 "settings: and so is README.md, guard: $1" sask "$repo/README.md"
+  mkdir -p .worktrees/3 .git/hermy/3; echo "sess-a $$" > .git/hermy/3/owner; echo '{}' > .worktrees/3/copy.json
+  rm "$sj"; ln -s ../../.worktrees/3/copy.json "$sj"
+  t 0 "settings: with settings.json a link to a copy in a claimed worktree, the copy is asked about, guard: $1" sask "$repo/.worktrees/3/copy.json"
+  t 0 "settings: and so is settings.json, guard: $1" sask "$repo/$sj"
+  rm -r "$sj" .worktrees .git/hermy/3; mv "$tmp/sj" "$sj"
+  mv .github/copilot "$tmp/sd"; ln -s ../.git/hooks .github/copilot
+  t 2 "settings: with .github/copilot a link to .git/hooks, settings.json is refused, guard: $1" sg "$repo/$sj"
+  t 2 "settings: and so is .git/hooks/settings.json, guard: $1" sg "$repo/.git/hooks/settings.json"
+  rm .github/copilot; ln -s "$here" .github/copilot
+  t 2 "settings: with .github/copilot a link to the hermy install, settings.json is refused, guard: $1" sg "$repo/$sj"
+  t 2 "settings: and so is the install's settings.json, guard: $1" sg "$here/settings.json"
+  rm .github/copilot; mv "$tmp/sd" .github/copilot
 }
 sasks block
 t 2 "settings: without HERMY_SETTINGS, refused as a main-checkout path" guard "$repo/.github/copilot/settings.json"

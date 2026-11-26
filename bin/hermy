@@ -916,17 +916,6 @@ if [ "${1-}" = guard ]; then
   done
   # Removed (tamp): putting a config back is the one edit allowed.
   [ -z "$tamp" ] || die "the edit guard refuses $f: $tm"
-  # The settings files HERMY_SETTINGS names (Copilot CLI's), where a write
-  # can turn every hook off as the config can, and no prompt of the agent's
-  # own holds an edit: asked about the same way, in both modes, by every
-  # spelling the config's ask resolves. Not when the settings path is itself
-  # a link, symbolic or hard, or the edit lands on a file with more than one
-  # name: that edit goes through the checks below like any other path, so a
-  # settings path linked to .git/config, .git/HEAD or the install leaves both
-  # names refused, and one linked to README.md is a main-checkout edit.
-  for x in ${hst[@]+"${hst[@]}"}; do
-    ! isat "$x" "$(printf %s "${x##*/}" | tr '[:upper:]' '[:lower:]')" || [ -L "$root/$x" ] || [ -n "$(find "$root/$x" "$at" -prune -links +1 2>/dev/null)" ] || ask "$x" "Editing $x, the agent's settings for this project, can turn hermy's hooks off. Allow it only if you asked for this change."
-  done
   # $1 with its deepest ancestor that is the root directory itself (-ef)
   # spelled $pr: the root has names no link shows (the firmlink above, a
   # bind mount), which no match on $pr's spelling would read as the project.
@@ -973,6 +962,17 @@ if [ "${1-}" = guard ]; then
   follow "$src" && inst=$(cd -P "${rp%/*}/.." && pwd -P && printf x) && inst=${inst%?x} || die "the edit guard could not find the hermy install it runs from, so it refuses $f in either guard mode."
   ininst() { local a=$1; while [ -n "$a" ]; do [ "$SECONDS" -lt "$budget" ] && [ ! "$a" -ef "$inst" ] || return 0; a=${a%/*}; done; return 1; }
   for x in "$p" "$g"; do case "$x" in "$pr"/*) ;; *) ! ininst "$x" || die "the edit guard refuses $f in either guard mode: it lies in the hermy install the hooks run from, $inst, where an edit would change or turn off every hook after it." ;; esac; done
+  # The settings files HERMY_SETTINGS names (Copilot CLI's), where a write
+  # can turn every hook off as the config can, and no prompt of the agent's
+  # own holds an edit: asked about the same way, in both modes, wherever the
+  # edit lands on one (isat: by identity, or by its directory and case-folded
+  # name), through any link, a copy in a worktree a settings path links to
+  # included. After the refusals above, so an edit through a settings path,
+  # or a directory above it, linked into a .git, a .jj or the install is
+  # refused by both names, and a spelling the walks refuse is refused.
+  for x in ${hst[@]+"${hst[@]}"}; do
+    ! isat "$x" "$(printf %s "${x##*/}" | tr '[:upper:]' '[:lower:]')" || ask "$x" "Editing $x, the agent's settings for this project, can turn hermy's hooks off. Allow it only if you asked for this change."
+  done
   warnmode edit
   case "$f" in */../*) die "refusing a path containing '..': $f" ;; esac
   agent="${HERMY_AGENT_DIR-}"

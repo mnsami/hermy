@@ -213,7 +213,9 @@ A `PreToolUse` hook on Edit, Write and NotebookEdit.
   That was checked in `-p` alone, where an ask nobody answers is a deny.
   What an interactive bypass session shows is not known.
   It asks the same way, in both modes, before any edit of Copilot CLI's `.github/copilot/settings.json` and
-  `settings.local.json`, where a change can turn hermy's hooks off. `.claude/settings.json` stays as it was.
+  `settings.local.json`, where a change can turn hermy's hooks off, by whatever path or link the edit reaches the file.
+  It asks only after the refusals below, so a settings path, or a directory above it, linked into a `.git`, a `.jj` or
+  the hermy install is refused. `.claude/settings.json` stays as it was.
 - **Always refuses:**
   - a file inside a `.git` or `.jj` below the project root;
   - a hard-linked file other than `.hermy.yml`, pnpm's store links in `node_modules` included;
