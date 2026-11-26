@@ -919,9 +919,13 @@ if [ "${1-}" = guard ]; then
   # The settings files HERMY_SETTINGS names (Copilot CLI's), where a write
   # can turn every hook off as the config can, and no prompt of the agent's
   # own holds an edit: asked about the same way, in both modes, by every
-  # spelling the config's ask resolves.
+  # spelling the config's ask resolves. Not when the settings path is itself
+  # a link, symbolic or hard, or the edit lands on a file with more than one
+  # name: that edit goes through the checks below like any other path, so a
+  # settings path linked to .git/config, .git/HEAD or the install leaves both
+  # names refused, and one linked to README.md is a main-checkout edit.
   for x in ${hst[@]+"${hst[@]}"}; do
-    ! isat "$x" "$(printf %s "${x##*/}" | tr '[:upper:]' '[:lower:]')" || ask "$x" "Editing $x, the agent's settings for this project, can turn hermy's hooks off. Allow it only if you asked for this change."
+    ! isat "$x" "$(printf %s "${x##*/}" | tr '[:upper:]' '[:lower:]')" || [ -L "$root/$x" ] || [ -n "$(find "$root/$x" "$at" -prune -links +1 2>/dev/null)" ] || ask "$x" "Editing $x, the agent's settings for this project, can turn hermy's hooks off. Allow it only if you asked for this change."
   done
   # $1 with its deepest ancestor that is the root directory itself (-ef)
   # spelled $pr: the root has names no link shows (the firmlink above, a

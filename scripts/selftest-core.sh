@@ -503,9 +503,14 @@ PATH="$tmp/nojq" t 2 "guard without jq fails closed" guard "$repo/.hermy.yml"
 # config can, is asked about as the config is, in both modes (sasks below,
 # after warn): by its own spelling, one with ./ and .., a case-folded name
 # and a link from outside the project. Without HERMY_SETTINGS it is a
-# main-checkout path.
+# main-checkout path. A settings path that is itself a link, symbolic or
+# hard, is not asked about: an edit by either name is held where it lands,
+# so .git's files and the hermy install stay refused, and a link to the
+# main checkout is held as the main checkout.
 mkdir -p .github/copilot; echo '{}' > .github/copilot/settings.json; ln -s "$repo/.github/copilot/settings.json" "$tmp/sl"
 sask() { local out; out=$(HERMY_SETTINGS=$cs guard "$1") && jq -e '.hermy == "ask" and (.text | contains("settings for this project, can turn hermy"))' <<<"$out"; }
+sg() { HERMY_SETTINGS=$cs guard "$1"; }
+snote() { local out; out=$(sg "$1") && jq -e '.hermy == "note"' <<<"$out"; }
 sasks() {
   t 0 "settings: guard asks on .github/copilot/settings.json, guard: $1" sask "$repo/.github/copilot/settings.json"
   t 0 "settings: and on settings.local.json, guard: $1" sask "$repo/.github/copilot/settings.local.json"
@@ -513,6 +518,20 @@ sasks() {
   t 0 "settings: by a case-folded name, guard: $1" sask "$repo/.github/copilot/Settings.JSON"
   t 0 "settings: through a link from outside the project, guard: $1" sask "$tmp/sl"
   HERMY_ASK=0 t 2 "settings: and refused where the host cannot ask, guard: $1" env HERMY_SETTINGS="$cs" "$here/bin/hermy" guard <<<"{\"session\":\"sess-a\",\"paths\":[\"$repo/.github/copilot/settings.json\"]}"
+  local sj=.github/copilot/settings.json
+  mv "$sj" "$tmp/sj"; ln -s ../../.git/config "$sj"
+  t 2 "settings: with settings.json a link to .git/config, .git/config is refused, guard: $1" sg "$repo/.git/config"
+  t 2 "settings: and so is settings.json, guard: $1" sg "$repo/$sj"
+  rm "$sj"; ln .git/HEAD "$sj"
+  t 2 "settings: with settings.json a hard link to .git/HEAD, .git/HEAD is refused, guard: $1" sg "$repo/.git/HEAD"
+  t 2 "settings: and so is settings.json, guard: $1" sg "$repo/$sj"
+  rm "$sj"; ln -s "$here/bin/hermy" "$sj"
+  t 2 "settings: with settings.json a link into the hermy install, its file is refused, guard: $1" sg "$here/bin/hermy"
+  t 2 "settings: and so is settings.json, guard: $1" sg "$repo/$sj"
+  rm "$sj"; ln -s ../../README.md "$sj"
+  if [ "$1" = block ]; then t 2 "settings: with settings.json a link to README.md, it is refused as the main checkout, not asked, guard: block" sg "$repo/$sj"
+  else t 0 "settings: with settings.json a link to README.md, it is let through with a warning, not asked, guard: warn" snote "$repo/$sj"; fi
+  rm "$sj"; mv "$tmp/sj" "$sj"
 }
 sasks block
 t 2 "settings: without HERMY_SETTINGS, refused as a main-checkout path" guard "$repo/.github/copilot/settings.json"
