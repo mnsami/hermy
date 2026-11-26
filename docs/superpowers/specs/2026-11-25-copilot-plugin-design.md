@@ -104,7 +104,7 @@ The fallback lines (#157, #279) are the primary path on Copilot already. Each ga
 
 - README, Copilot CLI section: install (`copilot plugin install`, and the marketplace route as measured), folder trust (interactive trust, `--trust-folder` headless: without it no hook runs), `--add-dir '<plugin dir>'`, `--allow-tool='<server>(<tool>)'` for headless MCP calls (interactive pre-approval through `allowed-tools` works, per the spike follow-up), and a link to the per-host table.
 - `docs/enforcement.md`: a per-host table of each layer (edit guard, config ask, tripwire, config lock, git hooks, PR check, branch protection): blocks, asks, warns or inert, on Claude Code and Copilot CLI, plus the Copilot timeout figures measured below.
-- CLAUDE.md: the deliverable list and the core/adapter paragraph name the Copilot manifest; Known ceilings gain the Copilot ones: a hook timeout fails open (the guard's 8 s and the fingerprint's 20 s budgets keep both well inside 10 s and 60 s; a repository past the fingerprint's budget runs unchecked, reported), hooks run inside Copilot's `--sandbox` where the shell can write `.git/hooks` and `.git/config`, no hook at all in an untrusted folder, a guard or `snap` refusal shown without its reason, a tripped command's output replaced by the report, no `link`, `.claude/` unprompted, and the `ask` shown without its reason.
+- CLAUDE.md: the deliverable list and the core/adapter paragraph name the Copilot manifest; Known ceilings gain the Copilot ones: a hook timeout fails open (the guard's 8 s and the fingerprint's 20 s budgets bound only the work they time, the guard's walks and the fingerprint, never a stall, so on Copilot every stall, git or a hook waiting on a FIFO or reading a huge file, fails open at the timeout; a repository past the fingerprint's budget runs unchecked, reported), hooks run inside Copilot's `--sandbox` where the shell can write `.git/hooks` and `.git/config`, no hook at all in an untrusted folder, a guard or `snap` refusal shown without its reason, a tripped command's output replaced by the report, no `link`, `.claude/` unprompted, and the `ask` shown without its reason.
 - `docs/specs/2026-10-15-cli-core-design.md`: the Copilot row updated to the measured registration and failure-event facts.
 - #239 gets a comment with the measured Copilot facts for its `agent:` line.
 
@@ -146,6 +146,8 @@ Results go in this document and the PR. The probe and script stay outside the re
 | `/hermy:config` through its fallback line | ran `HERMY_AGENT_DIR=.claude "<plugin dir>/bin/hermy" config`, `status`, `migrate` with the plugin dir placed outside the project; printed the config |
 | `timeout: 60`, hook sleeping 40 s then exit 2 | blocked: 60 is honoured past the 30 s default |
 | `timeout: 10`, hook sleeping 15 s | killed, the write went through: a timeout fails open |
+| shell `cd sub`, then an `apply_patch` of the relative `x.txt` | the payload `cwd` stayed the project root, and `x.txt` landed at the project root: the guard reads the path where it lands |
+| async shell call (tool `bash`, `mode: "async"`) | fires the `Bash` hooks, its `PostToolUse` at launch, so what it writes after that is the background-command ceiling; headless 1.0.115 has no tool to write input to a running shell |
 | Claude Code (`claude -p`, this branch) shell `echo x >> README.md` | `trip`'s report reaches the model once, from stderr, as before: the `block` stdout line changes nothing there |
 
 Worst case, timed through the launcher on macOS, bash 5 (host-independent):

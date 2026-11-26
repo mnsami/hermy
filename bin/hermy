@@ -38,8 +38,9 @@
 # hooks: off, with Claude Code's causes, when snap left no mark for
 # HERMY_SESSION in the last 60 s; HERMY_SETTINGS, colon-separated paths
 # under the root of more agent settings files, which snap and trip hold as
-# they hold the agent dir's (an entry that is empty, absolute, holds a ..
-# or a control character, quote or backslash is ignored).
+# they hold the agent dir's and guard asks about as it does the config (an
+# entry that is empty, absolute, holds a .. or a control character, quote
+# or backslash is ignored).
 # The config is .hermy.yml at the root, or, from before, .coddy.yml or
 # .claude/coddy.yml: the first present.
 # An issue counts as In Progress once the lock .git/hermy/<issue>/ exists.
@@ -279,19 +280,50 @@ upcfg() {
 # config alone, so theirs reads none: both at /dev/null, where git finds no
 # file. One that fails for want of the user's safe.directory leaves the root
 # to the walk.
-case "${1-}" in guard|snap|trip) hk=1 ;; *) hk="" ;; esac
+# hk is the hook verb, empty for every other.
+case "${1-}" in guard|snap|trip) hk=$1 ;; *) hk="" ;; esac
 rgit() { if [ -n "$hk" ]; then HOME=/dev/null XDG_CONFIG_HOME=/dev/null git "$@"; else git "$@"; fi; }
+# One verdict line, in the host's hook output when its shim defines hermy_out.
+emit() { if declare -F hermy_out >/dev/null; then hermy_out "$1"; else printf '%s\n' "$1"; fi; }
+# $1 as the text of a JSON string, its quotes aside, in time linear in its
+# length (json, a character at a time, is quadratic): sed escapes each
+# backslash, quote and control character but DEL (\b, \t, \f and \r, the
+# rest \u00XX), and awk joins the lines with \n.
+jesc() {
+  local i o c e=(-e 's/\\/\\\\/g' -e 's/"/\\"/g')
+  for i in {1..9} {11..31}; do
+    printf -v o %03o "$i"; printf -v c "\\$o"
+    case $i in 8) o='\\b' ;; 9) o='\\t' ;; 12) o='\\f' ;; 13) o='\\r' ;; *) printf -v o '\\\\u%04x' "$i" ;; esac
+    e+=(-e "s/$c/$o/g")
+  done
+  printf '%s\n' "$1" | LC_ALL=C sed "${e[@]}" | LC_ALL=C awk '{ printf "%s%s", s, $0; s = "\\n" }'
+}
 dir="${HERMY_ROOT:-$PWD}" odd="" proj="" back="" groot="" stop=""
 # git's discovery opens a .git's HEAD, commondir and config, and the common
-# dir's config, and waits for good on a FIFO there; a host that lets a hook
-# through at its timeout (Copilot CLI) would then run the call unchecked.
-# So the hooks first hold, without git, every .git directory from $dir
-# (physical, as git walks it) up to the first one git takes (isgit): each
-# of those files that exists, links followed, must be a plain file or a
-# directory (neither makes git wait), or the call is refused, onboarded or
-# not, git being stuck there either way.
+# dir's config, waits for good on a FIFO there and reads a config or
+# commondir whole; a host that lets a hook through at its timeout (Copilot
+# CLI) would then run the call unchecked. So the hooks first hold, without
+# git, every .git directory from $dir (physical, as git walks it) up to the
+# first one git takes (isgit): each of those files that exists, links
+# followed, must be a plain file or a directory (neither makes git wait),
+# and a config or commondir no more than 16 MiB, its size read from 16 MiB
+# and a byte at most, or the call is refused, onboarded or not, git being
+# stuck there either way. trip's refusal is also one block verdict on
+# stdout, as its die's (below).
 if [ -n "$hk" ]; then
-  waits() { [ ! -e "$1" ] || [ -f "$1" ] || [ -d "$1" ] || { echo "hermy: $1 is neither a plain file nor a directory, and git, which every hermy hook runs, would wait on it for good, so hermy refuses every edit and command until you remove it, or replace it with a plain file, by hand." >&2; exit 2; }; }
+  waits() {
+    local m
+    if [ ! -e "$1" ] || [ -d "$1" ]; then return 0
+    elif [ ! -f "$1" ]; then m="hermy: $1 is neither a plain file nor a directory, and git, which every hermy hook runs, would wait on it for good, so hermy refuses every edit and command until you remove it, or replace it with a plain file, by hand."
+    else
+      case "${1##*/}" in config|commondir) ;; *) return 0 ;; esac
+      [ "$(head -c 16777217 -- "$1" 2>/dev/null | wc -c 2>/dev/null)" -gt 16777216 ] 2>/dev/null || return 0
+      m="hermy: $1 is over 16 MiB, and git, which every hermy hook runs, reads it whole, which can outlast the hook's timeout, so hermy refuses every edit and command until you bring it under 16 MiB, or remove it, by hand."
+    fi
+    echo "$m" >&2
+    [ "$hk" != trip ] || emit "{\"hermy\":\"block\",\"text\":\"$(jesc "$m")\"}"
+    exit 2
+  }
   g=$(cd "$dir" 2>/dev/null && pwd -P) || g=$dir
   while [ -n "$g" ]; do
     if [ -d "$g/.git" ]; then
@@ -569,8 +601,6 @@ jqh() { HOME=/dev/null jq "$@"; }
 # session). A host's shim defines hermy_in to map its own payload to it; with
 # none, stdin already is that line.
 readin() { if declare -F hermy_in >/dev/null; then in=$(hermy_in); else in=$(cat); fi; }
-# One verdict line, in the host's hook output when its shim defines hermy_out.
-emit() { if declare -F hermy_out >/dev/null; then hermy_out "$1"; else printf '%s\n' "$1"; fi; }
 # Hook context for the agent: a note, with no decision, so the usual
 # permission flow still applies.
 note() { emit "$(jqh -cn --arg m "$*" '{hermy: "note", text: $m}')"; }
@@ -658,6 +688,41 @@ abspath() {
   p=$(cd "$p" 2>/dev/null && pwd -P && printf x) || return 1; p=${p%?x}
   p="${p%/}$t"; echo "${p:-/}"
 }
+
+# $1 holds no control character (C0, DEL, C1), backslash or quote, nor a
+# byte that is not part of valid UTF-8: q leaves it as it is.
+clean() { local LC_ALL=C qo; case "$1" in *[[:cntrl:]\\\"\']*|*$'\xc2'[$'\x80'-$'\x9f']*) return 1 ;; *[$'\x80'-$'\xff']*) qv "$1"; [ "$qo" = "'$1'" ] ;; esac; }
+# $1 as one inert word, whatever the shell: in single quotes, a quote as '\'',
+# a backslash as \134 and each byte of a control character (C0, DEL, C1), or
+# one not part of valid UTF-8, as \ooo, so it shows, keeps to one line, reads
+# one way and is valid UTF-8, which a JSON string carries byte for byte
+# (jq would turn such a byte into U+FFFD). qv leaves it in qo.
+q() { local qo; qv "$1"; printf '%s\n' "$qo"; }
+qv() {
+  local LC_ALL=C s=$1 c x t=$'\x80'-$'\xbf'
+  qo="'"
+  while [ -n "$s" ]; do
+    c=${s:0:1} s=${s:1}
+    # shellcheck disable=SC2254 # t is a bracket range: a continuation byte
+    case "$c${s:0:3}" in
+      \'*) qo+="'\\''"; continue ;;
+      \\*) qo+='\134'; continue ;;
+      $'\xc2'[$'\x80'-$'\x9f']*) c+=${s:0:1} s=${s:1} ;;
+      [[:cntrl:]]*) ;;
+      [$'\xc2'-$'\xdf'][$t]*) qo+=$c${s:0:1} s=${s:1}; continue ;;
+      $'\xe0'[$'\xa0'-$'\xbf'][$t]*|[$'\xe1'-$'\xec'$'\xee'$'\xef'][$t][$t]*|$'\xed'[$'\x80'-$'\x9f'][$t]*) qo+=$c${s:0:2} s=${s:2}; continue ;;
+      $'\xf0'[$'\x90'-$'\xbf'][$t][$t]|[$'\xf1'-$'\xf3'][$t][$t][$t]|$'\xf4'[$'\x80'-$'\x8f'][$t][$t]) qo+=$c${s:0:3} s=${s:3}; continue ;;
+      [$'\x80'-$'\xff']*) ;;
+      *) qo+=$c; continue ;;
+    esac
+    while [ -n "$c" ]; do printf -v x %d "'${c:0:1}"; printf -v x '\\%03o' $(((x + 256) % 256)); qo+=$x c=${c:1}; done
+  done
+  qo+="'"
+}
+# HERMY_SETTINGS's entries, colon-separated paths under the root, into hst,
+# for the guard's ask and the fingerprint; one that is empty, absolute,
+# holds a .. or is not clean is ignored.
+hst=(); [ -z "$hk" ] || while IFS= read -r -d : x; do case "/$x/" in //|//*|*/../*) ;; *) ! clean "$x" || hst+=("$x") ;; esac; done <<<"${HERMY_SETTINGS-}:"
 
 # This file by a path the cd below leaves valid, for the git hooks start writes.
 src="${BASH_SOURCE[0]-}"; case "$src" in /*|'') ;; *) src="$PWD/$src" ;; esac
@@ -828,9 +893,11 @@ if [ "${1-}" = guard ]; then
   pr=$(cd "$root" && pwd -P && printf x) && pr=${pr%?x} || pr=$root
   # Removed (tamp), /hermy:config stops on NOT_ONBOARDED, so the ask names none.
   # A shim whose host cannot ask sets HERMY_ASK=0: the ask then blocks.
+  # $2, when given, is the message.
   ask() {
     local m="Editing $1 changes the hermy guardrails. Allow it only if you asked for this change (/hermy:config)."
     [ -z "$tamp" ] || m="Writing $1 puts back the hermy config that was removed, and with it the hermy guardrails. Allow it only if you asked for this change."
+    [ -z "${2-}" ] || m=$2
     [ "${HERMY_ASK-}" != 0 ] || die "$m This host cannot ask, so hermy refuses it."
     emit "$(jqh -cn --arg m "$m" '{hermy: "ask", text: $m}')"; exit 0
   }
@@ -841,13 +908,21 @@ if [ "${1-}" = guard ]; then
   # one is ignored and let go by the config lock, so an edit of it goes
   # through the checks below like any other path (a link of it to .git/config
   # is refused, not asked); removed (tamp), every path is asked.
+  # isat <path> <its name, lower-case>: the edit lands on <path> under the root.
+  isat() { local d=$pr; case "$1" in */*) d="$pr/${1%/*}" ;; esac; [ "$nm" -ef "$root/$1" ] || { { [ "${at%/*}" -ef "$d" ] || [ "${at%/*}" = "$d" ]; } && [ "$lc" = "$2" ]; }; }
   for x in "${cfgs[@]}"; do
-    d=$pr; case "$x" in */*) d="$pr/${x%/*}" ;; esac
-    { [ "$nm" -ef "$root/$x" ] || { { [ "${at%/*}" -ef "$d" ] || [ "${at%/*}" = "$d" ]; } && [ "$lc" = "${x##*/}" ]; }; } && ask "$x"
+    ! isat "$x" "${x##*/}" || ask "$x"
     [ -n "$tamp" ] || [ "$x" != "$cname" ] || break
   done
   # Removed (tamp): putting a config back is the one edit allowed.
   [ -z "$tamp" ] || die "the edit guard refuses $f: $tm"
+  # The settings files HERMY_SETTINGS names (Copilot CLI's), where a write
+  # can turn every hook off as the config can, and no prompt of the agent's
+  # own holds an edit: asked about the same way, in both modes, by every
+  # spelling the config's ask resolves.
+  for x in ${hst[@]+"${hst[@]}"}; do
+    ! isat "$x" "$(printf %s "${x##*/}" | tr '[:upper:]' '[:lower:]')" || ask "$x" "Editing $x, the agent's settings for this project, can turn hermy's hooks off. Allow it only if you asked for this change."
+  done
   # $1 with its deepest ancestor that is the root directory itself (-ef)
   # spelled $pr: the root has names no link shows (the firmlink above, a
   # bind mount), which no match on $pr's spelling would read as the project.
@@ -962,26 +1037,6 @@ hermywt() {
 }
 # A real directory sits at path $1, physically: not gone, moved or a link.
 real() { [ -d "$1" ] && [ "$(cd "$1" 2>/dev/null && pwd -P)" = "$1" ]; }
-# $1 holds no control character (C0, DEL, C1), backslash or quote.
-clean() { local LC_ALL=C; case "$1" in *[[:cntrl:]\\\"\']*|*$'\xc2'[$'\x80'-$'\x9f']*) return 1 ;; esac; }
-# $1 as one inert word, whatever the shell: in single quotes, a quote as '\'',
-# a backslash as \134 and each byte of a control character (C0, DEL, C1) as
-# \ooo, so it shows, keeps to one line and reads one way.
-q() {
-  local LC_ALL=C s=$1 o="'" c x
-  while [ -n "$s" ]; do
-    c=${s:0:1} s=${s:1}
-    case "$c${s:0:1}" in
-      \'*) o+="'\\''"; continue ;;
-      \\*) o+='\134'; continue ;;
-      $'\xc2'[$'\x80'-$'\x9f']) c+=${s:0:1} s=${s:1} ;;
-      [[:cntrl:]]*) ;;
-      *) o+=$c; continue ;;
-    esac
-    while [ -n "$c" ]; do printf -v x %d "'${c:0:1}"; printf -v x '\\%03o' $(((x + 256) % 256)); o+=$x c=${c:1}; done
-  done
-  printf '%s\n' "$o'"
-}
 # $1 as jj's escape_json writes it, its quotes aside.
 json() {
   local LC_ALL=C s=$1 o="" c x
@@ -1272,10 +1327,9 @@ if [ "${1-}" = snap ] || [ "${1-}" = trip ]; then
   case "${HERMY_BUDGET-}" in ''|*[!0-9]*) ;; *) [ "${#HERMY_BUDGET}" -gt 4 ] || fpb=$HERMY_BUDGET ;; esac
   adb=$((10#$fpb / 2))
   # The settings files the fingerprint holds (snap): the agent dir's, then
-  # each HERMY_SETTINGS entry, colon-separated, under the root; one that is
-  # empty, absolute, holds a .. or is not clean is ignored.
+  # HERMY_SETTINGS's (hst).
   stg=(); [ -z "${HERMY_AGENT_DIR-}" ] || stg=("$HERMY_AGENT_DIR/settings.json" "$HERMY_AGENT_DIR/settings.local.json")
-  while IFS= read -r -d : f; do case "/$f/" in //|//*|*/../*) ;; *) ! clean "$f" || stg+=("$f") ;; esac; done <<<"${HERMY_SETTINGS-}:"
+  stg+=(${hst[@]+"${hst[@]}"})
   # The snapshot is named by the tool use, else the session (shared); an id
   # that is not a plain word reads as none, so it cannot name a path outside
   # TMPDIR. Both read without jq: onboard installs jq inside one command, so
@@ -1496,20 +1550,19 @@ if [ "${1-}" = snap ] || [ "${1-}" = trip ]; then
     [ -n "$ok" ] || rm -f "$file" "$file".*
     [ -z "$un" ] || ctx "$un"; exit 0
   fi
-  code=2 msg="" keep=""
+  code=2 msg="" keep="" nb=""
   # Each refusal from here is also one block verdict on stdout, its text the
   # stderr message: a host that shows the model no stderr on a PostToolUse
   # exit 2 (Copilot CLI) reads it there. guard and snap print none: their
   # exit 2 blocks the call whether or not a host reads their output.
   # stderr first, so a verdict the shim cannot map loses no report. Without
-  # jq, a message free of control characters is escaped by sed: json walks
-  # it a character at a time, quadratic in a report naming thousands of paths.
+  # jq, escaped by jesc, in time linear in the report. With nb set, none:
+  # an unchecked report snap already sent as its note.
   die() {
-    local m="hermy: $*" b t
-    b=$(jqh -cn --arg t "$m" '{hermy: "block", text: $t}' 2>/dev/null) || {
-      case $m in *[[:cntrl:]]*) t=$(json "$m") ;; *) t=$(printf '%s' "$m" | LC_ALL=C sed -e 's/\\/\\\\/g' -e 's/"/\\"/g') ;; esac
-      b="{\"hermy\":\"block\",\"text\":\"$t\"}"; }
-    echo "$m" >&2; emit "$b"; exit "$code"
+    local m="hermy: $*" b
+    echo "$m" >&2
+    [ -n "$nb" ] || { b=$(jqh -cn --arg t "$m" '{hermy: "block", text: $t}' 2>/dev/null) || b="{\"hermy\":\"block\",\"text\":\"$(jesc "$m")\"}"; emit "$b"; }
+    exit "$code"
   }
   # The snapshot says whether the project was onboarded when the command
   # started, so trip never looks at the config first: the command may have
@@ -1608,8 +1661,12 @@ if [ "${1-}" = snap ] || [ "${1-}" = trip ]; then
   lab=/dev/null now=""
   # The snapshot goes, and trip's own files, its config copies too unless one is kept.
   drop() { rm -f "$file" ${now:+"$now"}; [ "$lab" = /dev/null ] || rm -f "$lab"; [ -n "$keep" ] || rm -f "$file".*; }
-  grep -qx unchecked "$file" && { drop; die "${msg}that command ran unchecked: the main checkout took more than $fpb seconds to fingerprint before it ran ($tl), so what it changed there, and a worktree it made, could not be seen. $ck"; }
-  w=$(why "$file") && { drop; die "${msg}that command ran unchecked: the main checkout could not be fingerprinted before it ran, since $w, so what it changed there, and a worktree it made, could not be seen. $ck"; }
+  # snap told the agent already, in its note, that the command runs
+  # unchecked, so with nothing else to report no block verdict goes out:
+  # on Copilot CLI it would take the place of every command's output while
+  # the checkout stays too big or a source keeps failing.
+  grep -qx unchecked "$file" && { drop; [ -n "$msg" ] || nb=1; die "${msg}that command ran unchecked: the main checkout took more than $fpb seconds to fingerprint before it ran ($tl), so what it changed there, and a worktree it made, could not be seen. $ck"; }
+  w=$(why "$file") && { drop; [ -n "$msg" ] || nb=1; die "${msg}that command ran unchecked: the main checkout could not be fingerprinted before it ran, since $w, so what it changed there, and a worktree it made, could not be seen. $ck"; }
   # A .git snap saw (git dir) and the command moved or removed: no git runs.
   ! grep -qx 'git dir' "$file" || [ -d "$root/.git" ] || { drop; die "${msg}the main checkout could not be fingerprinted after that command ran, since its .git is gone, so what it changed there could not be checked. $ck"; }
   # So for a .jj/repo (jj dir): jj would list no workspace.

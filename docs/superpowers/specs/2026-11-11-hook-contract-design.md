@@ -118,7 +118,11 @@ of more than some forty paths is refused under the 64 cap and must be split.
   2's stderr to the user alone, and reads a `{"decision":"block","reason":…}`
   on stdout with it, the model seeing `Tool result blocked: <reason>` in
   place of the command's output; Claude Code reads stderr on an exit 2. The
-  Claude shim maps it to that decision block. `guard` and `snap` print none:
+  Claude shim maps it to that decision block. A report that the command ran
+  unchecked and nothing else has none: `snap`'s note told the model already,
+  and the verdict would take the place of the command's output on every
+  command while the checkout stays too big or a source keeps failing.
+  `guard` and `snap` print none:
   Copilot reads no stdout on a `PreToolUse` exit 2, and a deny on exit 0
   would fail open wherever the JSON is not read.
 

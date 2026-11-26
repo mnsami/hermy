@@ -419,6 +419,42 @@ t 2 "trip: with a jq that fails, a stray file trips" blk "$tmp/failjq:$PATH"
 t 0 "trip: and its verdict is built without jq, the same text" oneblock
 t 2 "trip: with a jq that fails, a stray file named with a quote and a backslash trips" blk "$tmp/failjq:$PATH" 'q"\x.txt'
 t 0 "trip: and its verdict, escaped without jq, is the same text" oneblock
+# q prints a byte that is not part of valid UTF-8 as \ooo, so the report is
+# valid UTF-8, which jq keeps byte for byte, and leaves valid UTF-8 as it is.
+qof() { bash -c 'eval "$(sed -n "/^clean() /p;/^q() /p;/^qv() /,/^}/p" "$1")"; q "$2"' _ "$here/bin/hermy" "$1"; }
+t 0 "q: a byte that is not part of valid UTF-8 as \\ooo" test "$(qof $'a\xffb\xc3')" = "'a\\377b\\303'"
+t 0 "q: a surrogate and an overlong form too" test "$(qof $'\xed\xa0\x80\xc0\xaf')" = "'\\355\\240\\200\\300\\257'"
+t 0 "q: valid UTF-8 as it is" test "$(qof $'caf\xc3\xa9 \xe2\x82\xac \xf0\x9f\x98\x80')" = $'\'caf\xc3\xa9 \xe2\x82\xac \xf0\x9f\x98\x80\''
+t 2 "trip: a stray file named in UTF-8 trips" blk "$PATH" $'caf\xc3\xa9.txt'
+t 0 "trip: naming it as it is" grep -qF $'caf\xc3\xa9.txt' "$tmp/blk.err"
+t 0 "trip: and its verdict is the same text" oneblock
+# Where the file system takes a name that is no UTF-8 (APFS does not), its
+# report and verdict are the same bytes, with jq and without.
+if { : > $'u8\xff.txt'; } 2>/dev/null; then
+  rm $'u8\xff.txt'
+  for p in "$PATH" "$tmp/failjq:$PATH"; do
+    t 2 "trip: a stray file named with a byte that is no UTF-8 trips" blk "$p" $'u8\xff.txt'
+    t 0 "trip: naming it as \\ooo" grep -qF "'u8\\377.txt'" "$tmp/blk.err"
+    t 0 "trip: and its verdict is the same bytes" oneblock
+  done
+else echo "skip trip with a name that is no UTF-8: this file system refuses one"; fi
+# Without jq the verdict is escaped in time linear in the report, control
+# characters included: a 1.6 MB one, a control character every 16 bytes,
+# in seconds; and a report holding one (TMPDIR's, in a lost snapshot's
+# message) is the same text.
+# jescin: stdin through the core's jesc (an argument that big passes ARG_MAX)
+jescin() { bash -c 'eval "$(sed -n "/^jesc() /,/^}/p" "$1")"; jesc "$(cat)"' _ "$here/bin/hermy"; }
+big=$(awk 'BEGIN { for (i = 0; i < 100000; i++) printf "p%07d\001/a\"b\\\t\n", i }')
+SECONDS=0; out=$(printf %s "$big" | jescin); r=$SECONDS
+t 0 "trip: its escape without jq takes a 1.6 MB report holding control characters in seconds" test "$r" -le 5
+t 0 "trip: and reads back as that report" test "$(printf '"%s"' "$out" | jq -j .)" = "$big"
+td="$tmp/t"$'\t'd; mkdir "$td"
+printf '{"call":"none"}' | TMPDIR=$td PATH="$tmp/failjq:$PATH" run trip > "$tmp/blk.out" 2> "$tmp/blk.err"
+t 0 "trip: with a jq that fails, a report holding a tab is one verdict of the same text" oneblock
+rmdir "$td"
+# guard and snap print no verdict when they refuse: their exit 2 alone blocks.
+nout() { local o; o=$("$@" 2>/dev/null); [ $? = 2 ] && [ -z "$o" ]; }
+t 0 "guard: a refusal prints nothing on stdout" nout guard "$repo/README.md"
 # HERMY_SETTINGS names more settings files, held as the agent dir's: a shell
 # write of disableAllHooks to each, git-ignored or not, trips with the
 # settings report and not as a change to the main checkout; without it, no
@@ -451,11 +487,30 @@ done
 HERMY_SETTINGS="::/abs:.github/copilot/a.json" tripped 2 "settings: a HERMY_SETTINGS entry past empty and absolute ones is held" "printf '{\"disableAllHooks\":true}\n' > .github/copilot/a.json"
 rm -r .github; cp "$tmp/exclude" .git/info/exclude
 PATH="$tmp/nojq" t 2 "guard without jq fails closed" guard "$repo/.hermy.yml"
+# An edit of a HERMY_SETTINGS file, which can turn every hook off as the
+# config can, is asked about as the config is, in both modes (sasks below,
+# after warn): by its own spelling, one with ./ and .., a case-folded name
+# and a link from outside the project. Without HERMY_SETTINGS it is a
+# main-checkout path.
+mkdir -p .github/copilot; echo '{}' > .github/copilot/settings.json; ln -s "$repo/.github/copilot/settings.json" "$tmp/sl"
+sask() { local out; out=$(HERMY_SETTINGS=$cs guard "$1") && jq -e '.hermy == "ask" and (.text | contains("settings for this project, can turn hermy"))' <<<"$out"; }
+sasks() {
+  t 0 "settings: guard asks on .github/copilot/settings.json, guard: $1" sask "$repo/.github/copilot/settings.json"
+  t 0 "settings: and on settings.local.json, guard: $1" sask "$repo/.github/copilot/settings.local.json"
+  t 0 "settings: spelled with ./ and .., guard: $1" sask "$repo/./.github/x/../copilot/settings.json"
+  t 0 "settings: by a case-folded name, guard: $1" sask "$repo/.github/copilot/Settings.JSON"
+  t 0 "settings: through a link from outside the project, guard: $1" sask "$tmp/sl"
+  HERMY_ASK=0 t 2 "settings: and refused where the host cannot ask, guard: $1" env HERMY_SETTINGS="$cs" "$here/bin/hermy" guard <<<"{\"session\":\"sess-a\",\"paths\":[\"$repo/.github/copilot/settings.json\"]}"
+}
+sasks block
+t 2 "settings: without HERMY_SETTINGS, refused as a main-checkout path" guard "$repo/.github/copilot/settings.json"
 echo 'guard: warn' >> .hermy.yml
 t 0 "warn: guard still asks on .hermy.yml" asks "$repo/.hermy.yml"
 t 0 "warn: and spelled through .." asks "$repo/sub/../.hermy.yml"
 t 0 "warn: and through .. after a link out of the project" asks "$repo/lnk/../.hermy.yml"
 rm lnk
+sasks warn
+rm -r .github "$tmp/sl"
 t 0 "warn: guard lets the main checkout through" guard "$repo/README.md"
 # un, snap's unchecked notice, is the core's own: one in the environment (a
 # settings env) reaches no guard notice.
@@ -633,11 +688,19 @@ t 0 "budget: snap past it lets the command run, within seconds" test "$r:$((SECO
 t 0 "budget: telling the agent it goes unchecked" jq -e '.hermy == "note" and (.text | contains("so this command runs unchecked"))' <<<"$out"
 t 0 "budget: its snapshot says so" grep -qx unchecked "$snapfile"
 t 1 "budget: and no git of its fingerprint is left running" left
-rm .hermy.yml; out=$(wire trip w 2>&1); r=$?
+rm .hermy.yml; wire trip w > "$tmp/blk.out" 2> "$tmp/blk.err"; r=$?; out=$(cat "$tmp/blk.err")
 t 0 "budget: trip reports a command whose snapshot is unchecked" test "$r" = 2
 t 0 "budget: saying so" grep -q 'that command ran unchecked' <<<"$out"
 t 0 "budget: and the config lock still puts back a deleted .hermy.yml" same .hermy.yml
+t 0 "budget: its one block verdict carrying both" oneblock
 tripped 0 "budget: the next command is checked afresh" 'true'
+# With nothing but that to say, trip prints no block verdict: snap's note
+# told the agent, and on Copilot CLI the verdict would take the place of the
+# command's output. The exit and the message stay.
+slow snap >/dev/null; wire trip w > "$tmp/blk.out" 2> "$tmp/blk.err"; r=$?
+t 0 "budget: trip reports a command that ran unchecked and changed nothing else" test "$r" = 2
+t 0 "budget: saying so on stderr" grep -q 'that command ran unchecked' "$tmp/blk.err"
+t 0 "budget: with no block verdict" test ! -s "$tmp/blk.out"
 wire snap w; rm .hermy.yml
 SECONDS=0; out=$(slow trip 2>&1); r=$?
 t 0 "budget: trip past it reports the command, within seconds" test "$r:$((SECONDS <= 8))" = 2:1
@@ -666,6 +729,7 @@ wire trip w 2>/dev/null; rm -r "$tmp/slowt"
 mkdir -p .git/worktrees/many
 adm() { printf '{"call":"w"}' | HERMY_BUDGET=0 run snap; }
 t 2 "budget: snap refuses once the admin dirs take more than half of it" adm
+t 0 "snap: a refusal prints nothing on stdout" nout adm
 t 0 "budget: naming .git/worktrees, to clear by hand" says "/.git/worktrees' holds more entries than hermy can check in 0 seconds before a shell command, so hermy refuses every command until you remove, by hand" adm
 t 0 "budget: leaving no record" none
 echo 'guard: warn' >> .hermy.yml
@@ -700,13 +764,15 @@ unchecked() {
   for i in 1 2; do
     out=$(PATH="$3:$PATH" wire snap w); echo x >> README.md
     t 0 "unchecked: $1 failing, snap says the command runs unchecked ($i)" jq -e --arg s "since $2 failed, so this command runs unchecked" '.hermy == "note" and (.text | contains($s))' <<<"$out"
-    out=$(PATH="$3:$PATH" wire trip w 2>&1); r=$?
+    out=$(PATH="$3:$PATH" wire trip w 2>&1 >"$tmp/blk.out"); r=$?
     t 0 "unchecked: and trip reports the edit's command ($i)" test "$r" = 2
     t 0 "unchecked: as one that ran unchecked, naming $2 ($i)" grep -q "ran unchecked: the main checkout could not be fingerprinted before it ran, since $2 failed" <<<"$out"
+    t 0 "unchecked: with no block verdict, snap's note having said it ($i)" test ! -s "$tmp/blk.out"
   done
-  git checkout -q README.md; PATH="${4:-$3}:$PATH" FAIL=none wire snap w >/dev/null; echo x >> README.md; out=$(PATH="$3:$PATH" wire trip w 2>&1); r=$?
+  git checkout -q README.md; PATH="${4:-$3}:$PATH" FAIL=none wire snap w >/dev/null; echo x >> README.md; PATH="$3:$PATH" wire trip w > "$tmp/blk.out" 2> "$tmp/blk.err"; r=$?; out=$(cat "$tmp/blk.err")
   t 0 "unchecked: $1 failing at trip alone, an edit trips" test "$r" = 2
   t 0 "unchecked: saying the checkout could not be fingerprinted, naming $2" grep -q "could not be fingerprinted after that command ran, since $2 failed" <<<"$out"
+  t 0 "unchecked: with its block verdict, which no note of snap's gave" oneblock
   git checkout -q README.md
 }
 FAIL=status unchecked "git status" "git status" "$tmp/fsrc"
@@ -956,14 +1022,13 @@ HERMY_ASK=0 t 2 "guard: under HERMY_ASK=0 two paths, one the config, block" guar
 t 2 "guard: and so under a shim's HERMY_ASK=0 it never exported" bash -c 'HERMY_ASK=0; . "$1" guard' _ "$here/bin/hermy" <<<"{\"session\":\"sess-a\",\"paths\":[\"$repo/.worktrees/1/a.txt\",\"$repo/.hermy.yml\"]}"
 # A NUL in a path makes bash warn on stderr; the ask on stdout still wins.
 t 0 "guard: two paths, the config's with a NUL, still ask" eval 'guardp "[\"$repo/.worktrees/1/a.txt\",\"$repo/.hermy.yml\\u0000\"]" 2>/dev/null | jq -e ".hermy == \"ask\""'
-# A host's shim hands over every file one apply_patch string names. Codex-
-# and Copilot-shaped shims, the self-test's alone, share one extractor.
+# A host's shim hands over every file one apply_patch string names: a
+# Codex-shaped shim, the self-test's alone (Copilot CLI's is the real shim,
+# selftest.sh's).
 cat > "$tmp/patchshim" <<'EOF'
-# Codex sends apply_patch with the patch as its command's last word, Copilot
-# as an Edit whose tool_input is the patch string.
+# Codex sends apply_patch with the patch as its command's last word.
 hermy_in() {
-  jq -c 'def patch: if (.tool_input | type) == "string" then .tool_input
-      elif (.tool_input.command | type) == "array" then .tool_input.command[-1]
+  jq -c 'def patch: if (.tool_input.command | type) == "array" then .tool_input.command[-1]
       else .tool_input.input // "" end;
     {paths: [patch | splits("\n") | rtrimstr("\r") | capture("^\\*\\*\\* (?:(?:Update|Add|Delete) File|Move to): (?<p>.+)$") | .p],
      cwd: (.cwd // ""), call: (.tool_use_id // ""), session: (.session_id // "")}'
@@ -972,14 +1037,11 @@ EOF
 printf '. %q\n' "$here/bin/hermy" >> "$tmp/patchshim"
 # patch <path...>: an apply_patch string updating each path
 patch() { local p; printf '*** Begin Patch\n'; for p; do printf '*** Update File: %s\n@@\n-hi\n+ho\n' "$p"; done; printf '*** End Patch\n'; }
-# codexp <patch> and copilot <path...>: the guard's payload as each host sends it
+# codexp <patch>: the guard's payload as Codex sends it
 codexp() { jq -cn --arg p "$1" --arg c "$repo" '{session_id: "sess-a", tool_use_id: "c1", cwd: $c, tool_name: "apply_patch", tool_input: {command: ["apply_patch", $p]}}' | bash "$tmp/patchshim" guard; }
 codex() { codexp "$(patch "$@")"; }
-copilot() { jq -cn --arg p "$(patch "$@")" --arg c "$repo" '{session_id: "sess-a", tool_use_id: "c1", cwd: $c, tool_name: "Edit", tool_input: $p}' | bash "$tmp/patchshim" guard; }
 t 0 "apply_patch: a Codex patch of two files in the claimed worktree passes" codex .worktrees/1/a.txt .worktrees/1/b.txt
 t 2 "apply_patch: a Codex patch of README.md is refused" codex README.md
-t 0 "apply_patch: a Copilot Edit patching a file in the claimed worktree passes" copilot .worktrees/1/a.txt
-t 2 "apply_patch: a Copilot Edit patching README.md is refused" copilot README.md
 t 2 "apply_patch: a patch of the claimed worktree and README.md is refused" codex .worktrees/1/a.txt README.md
 t 2 "apply_patch: a move out of the claimed worktree onto README.md is refused" codexp "$(printf '*** Begin Patch\n*** Update File: .worktrees/1/a.txt\n*** Move to: README.md\n@@\n-hi\n+ho\n*** End Patch')"
 many=$(jq -cn --arg d "$repo/.worktrees/1/" '[range(0;65)|$d+"f\(.)"]')
@@ -2185,13 +2247,27 @@ t 2 "snap: and so is a command" timeout 10 sh -c "printf '{\"session\":\"s\",\"c
 rm -rf "$tmp/sp"
 # a FIFO where git's discovery opens a file (a .git's HEAD, commondir or
 # config, or the common dir's config) would hold root resolution's git for
-# good, past a timeout Copilot CLI lets through: every hook refuses at once
+# good, and a config or commondir over 16 MiB, which it reads whole, for
+# seconds (a sparse 2 GiB .git/config, 20), past a timeout Copilot CLI lets
+# through: every hook refuses at once, trip with its one block verdict, its
+# text the stderr message, guard and snap with nothing on stdout. ffhook
+# <verb>: the hook on the scratch repo, its stdout and stderr kept as blk's.
 mkdir -p "$tmp/ff" "$tmp/ffc/objects" "$tmp/ffc/refs"; git init -q "$tmp/ff"; cp "$dp/.hermy.yml" "$tmp/ff/"
-for f in HEAD commondir config ../../ffc/config; do
-  p="$tmp/ff/.git/$f"; [ "$f" = "${f#../}" ] || echo "$tmp/ffc" > "$tmp/ff/.git/commondir"
-  [ ! -e "$p" ] || mv "$p" "$tmp/ff.save"; mkfifo "$p"
-  for v in guard snap trip; do t 2 "$v: a FIFO at .git/$f is refused within seconds" timeout 10 sh -c "printf '{\"session\":\"s\",\"paths\":[\"$tmp/ff/f\"],\"cwd\":\"$tmp/ff\",\"command\":\"true\"}' | HERMY_ROOT='$tmp/ff' '$here/bin/hermy' $v"; done
-  rm -f "$p"; [ ! -e "$tmp/ff.save" ] || mv "$tmp/ff.save" "$p"; [ "$f" = "${f#../}" ] || rm "$tmp/ff/.git/commondir"
+ffhook() { timeout 10 sh -c "printf '{\"session\":\"s\",\"paths\":[\"$tmp/ff/f\"],\"cwd\":\"$tmp/ff\",\"command\":\"true\"}' | HERMY_ROOT='$tmp/ff' '$here/bin/hermy' $1" > "$tmp/blk.out" 2> "$tmp/blk.err"; }
+for k in fifo big; do
+  for f in HEAD commondir config ../../ffc/config; do
+    [ "$k:$f" != big:HEAD ] || continue
+    p="$tmp/ff/.git/$f"; [ "$f" = "${f#../}" ] || echo "$tmp/ffc" > "$tmp/ff/.git/commondir"
+    [ ! -e "$p" ] || mv "$p" "$tmp/ff.save"
+    if [ "$k" = fifo ]; then mkfifo "$p"; w="a FIFO"; else command dd if=/dev/null of="$p" bs=1048576 seek=2048 count=0 2>/dev/null; w="a sparse 2 GiB file"; fi
+    for v in guard snap trip; do
+      t 2 "$v: $w at .git/$f is refused within seconds" ffhook "$v"
+      if [ "$v" = trip ]; then t 0 "trip: its refusal is one block verdict, its text the stderr message" oneblock
+      else t 0 "$v: its refusal prints nothing on stdout" test ! -s "$tmp/blk.out"; fi
+    done
+    [ "$k" = fifo ] || t 0 "trip: naming the size bound" grep -q 'is over 16 MiB' "$tmp/blk.err"
+    rm -f "$p"; [ ! -e "$tmp/ff.save" ] || mv "$tmp/ff.save" "$p"; [ "$f" = "${f#../}" ] || rm "$tmp/ff/.git/commondir"
+  done
 done
 t 0 "guard: and with none, a file outside the project passes" sh -c "printf '{\"session\":\"s\",\"paths\":[\"$tmp/ffo\"]}' | HERMY_ROOT='$tmp/ff' '$here/bin/hermy' guard"
 # an edit landing in the hermy install the hooks run from is refused, in
