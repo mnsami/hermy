@@ -142,7 +142,17 @@ On Copilot CLI:
 - Copilot also reads `disableAllHooks` and `enabledPlugins` from `.github/copilot/settings.json` and
   `settings.local.json`, and either can turn hermy's hooks off. The tripwire reports a shell write to either, git-ignored
   or not, as it does `.claude/`'s. The edit guard asks before an edit of either, in both modes, as it does for
-  `.hermy.yml`.
+  `.hermy.yml`: of the file once it exists, by whatever path or link reaches it, and, before it exists, at its own path
+  with no link on the way, or in its directory once that exists.
+- The edit guard does not ask before an edit that creates either file in two cases:
+  - Through a link, while its directory does not resolve yet. A shell command makes `.github/copilot` a link to a
+    place not made yet (`../.claude/hc`, a claimed worktree, outside the project). An edit of the link's target then
+    creates the file Copilot reads, in both modes. The tripwire reports the link only as a new path in the main
+    checkout, naming no settings file, and not at all when git ignores it. It does not see the edit, and the shell
+    check before the next command records the new file as it finds it.
+  - Through a directory in another case, not made yet, on a disk that ignores case (`.github/Copilot/settings.json`).
+    The edit guard refuses that as an edit in the main checkout, but under `guard: warn` it goes through, and
+    nothing reports the file.
 - `--add-dir '<plugin dir>'`, which the skills need, lets Copilot's tools write the plugin's install, where the hooks
   run from. The edit guard refuses an edit there. A shell command can still rewrite it, unseen, and turn off every
   hook after it.
@@ -212,8 +222,11 @@ A `PreToolUse` hook on Edit, Write and NotebookEdit.
   the edit is denied and the file stays as it was.
   That was checked in `-p` alone, where an ask nobody answers is a deny.
   What an interactive bypass session shows is not known.
-  It asks the same way, in both modes, before any edit of Copilot CLI's `.github/copilot/settings.json` and
-  `settings.local.json`, where a change can turn hermy's hooks off, by whatever path or link the edit reaches the file.
+  It asks the same way, in both modes, before an edit of Copilot CLI's `.github/copilot/settings.json` and
+  `settings.local.json`, where a change can turn hermy's hooks off: by whatever path or link the edit reaches the
+  file once it exists, and, before it exists, at its own path with no link on the way, or in its directory once that
+  exists. An edit that creates either file through a link while its directory does not resolve yet, or through a
+  directory in another case not made yet, is not asked about ([per host](#per-host)).
   It asks only after the refusals below, so a settings path, or a directory above it, linked into a `.git`, a `.jj` or
   the hermy install is refused. `.claude/settings.json` stays as it was.
 - **Always refuses:**
