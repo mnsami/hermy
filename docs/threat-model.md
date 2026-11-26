@@ -82,7 +82,10 @@ Ask three questions in order.
    Record it in [enforcement.md](enforcement.md), or leave it where it is already recorded. No fix.
 3. Is it in model and held by nothing? Then it is a bug. Fix it, or cut the rule it sits on.
 
-A gap already listed in enforcement.md is known. Link it and do not file it again.
+A gap already listed in enforcement.md or [enforcement-limits.md](enforcement-limits.md) is known. Link it and do not
+file it again. If it is in model and no remote layer holds it, it is a bug already recorded, open until fixed or its rule
+is cut, as the FIFO's remainder below. `bypassPermissions` and auto mode skip the host's prompts, not the sandbox,
+so what they let through is in model.
 
 Worked examples, each checked against enforcement.md:
 
@@ -97,10 +100,19 @@ Worked examples, each checked against enforcement.md:
 - **A planted `bash` on `PATH`.** In model: a command can write `.venv/bin/bash`. The hooks drop every `PATH` entry
   inside the project before they look up `bash`, `git`, `jq` or `jj`
   ([bash and `PATH`](enforcement.md#bash-and-path)). Held locally, so no bug.
-  An absolute entry outside the project that a settings `env` sets still reaches them. That is a recorded ceiling
-  the host holds.
+  An absolute entry outside the project that a settings `env` sets still reaches them. That is in model, and no remote
+  layer holds it: a bug already recorded ([bash and `PATH`](enforcement.md#bash-and-path)), which the tripwire reports
+  and the host's protected-path prompt gates for an Edit
+  ([settings files](enforcement-limits.md#settings-files)). Do not file it again.
 - **`--no-verify`.** In model: the agent can run it inside the sandbox. It skips the git hooks
   ([Git hooks](enforcement.md#git-hooks)). Branch protection and the PR check hold the default branch.
   A ceiling to record, which it is. No fix.
+- **A command that swaps the guard's checked target for a link before the tool writes.** In model, and no remote layer
+  holds it. Listed under the edit guard's "Doesn't catch" ([Edit guard](enforcement.md#edit-guard)): a bug already
+  recorded. Do not file it again.
+- **A shell write inside another session's worktree, or an unclaimed one.** In model, and no remote layer holds it.
+  Listed under the tripwire's "Doesn't catch" ([Shell tripwire](enforcement.md#shell-tripwire)): already recorded.
+- **A background command that writes later.** Out of model, as a background process. No issue
+  ([Shell tripwire](enforcement.md#shell-tripwire)).
 - **A command run with the sandbox off that removes `.hermy.yml` and every leftover.** Out of model. Nothing then
   tells it from a project never onboarded ([Config lock](enforcement.md#config-lock)). No issue.
