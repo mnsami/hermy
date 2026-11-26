@@ -429,12 +429,16 @@ t 2 "trip: a stray file named in UTF-8 trips" blk "$PATH" $'caf\xc3\xa9.txt'
 t 0 "trip: naming it as it is" grep -qF $'caf\xc3\xa9.txt' "$tmp/blk.err"
 t 0 "trip: and its verdict is the same text" oneblock
 # Where the file system takes a name that is no UTF-8 (APFS does not), its
-# report and verdict are the same bytes, with jq and without.
+# report and verdict are the same bytes, with jq and without. A stat that
+# prints such a name lossily (uutils coreutils, Ubuntu 26.04's default) gives
+# the fingerprint no line for it, so the run is unchecked instead, as refused.
 if { : > $'u8\xff.txt'; } 2>/dev/null; then
+  sn=$(stat -c %n -- $'u8\xff.txt' 2>/dev/null)
   rm $'u8\xff.txt'
   for p in "$PATH" "$tmp/failjq:$PATH"; do
     t 2 "trip: a stray file named with a byte that is no UTF-8 trips" blk "$p" $'u8\xff.txt'
-    t 0 "trip: naming it as \\ooo" grep -qF "'u8\\377.txt'" "$tmp/blk.err"
+    if [ "$sn" = $'u8\xff.txt' ]; then t 0 "trip: naming it as \\ooo" grep -qF "'u8\\377.txt'" "$tmp/blk.err"
+    else t 0 "trip: under a stat that prints the name lossily, as unchecked" grep -qF "could not be fingerprinted" "$tmp/blk.err"; fi
     t 0 "trip: and its verdict is the same bytes" oneblock
   done
 else echo "skip trip with a name that is no UTF-8: this file system refuses one"; fi
