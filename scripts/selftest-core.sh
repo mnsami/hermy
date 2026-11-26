@@ -471,6 +471,18 @@ for f in .github/copilot/settings.json .github/copilot/settings.local.json; do
   done
 done
 cp "$tmp/exclude" .git/info/exclude
+# trip reads the new lines in one pass, with no process per line, so a
+# command that writes thousands of files in the main checkout and a settings
+# file is reported well inside trip's 60 s timeout, the settings report with
+# it (a grep per line took 29 s on 2,000).
+HERMY_SETTINGS=$cs wire snap w
+mkdir many; (cd many && awk 'BEGIN { for (i = 0; i < 3000; i++) print "f" i }' | xargs touch); printf '{"disableAllHooks":true}\n' > .github/copilot/settings.json
+SECONDS=0; out=$(HERMY_SETTINGS=$cs wire trip w 2>&1); r=$?
+t 0 "trip: 3,000 new files and a settings change are reported within seconds" test "$r:$((SECONDS <= 20))" = 2:1
+t 0 "trip: naming every file" grep -qF "that command changed the main checkout: many/f0 many/f1 many/f10 " <<<"$out"
+t 0 "trip: to the last" grep -qF " many/f999. Issue work belongs in .worktrees/<issue>/." <<<"$out"
+t 0 "trip: and the settings file" grep -qF "that command changed .github/copilot/settings.json, the agent's settings for this project" <<<"$out"
+rm -r many .github/copilot/settings.json
 report "settings: without HERMY_SETTINGS, a shell write of disableAllHooks to .github/copilot/settings.json trips" "printf '{\"disableAllHooks\":true}\n' > .github/copilot/settings.json"
 t 1 "settings: but gets no settings report" grep -qF "the agent's settings" <<<"$out"
 rm .github/copilot/settings.json; echo .github/copilot/settings.local.json >> .git/info/exclude

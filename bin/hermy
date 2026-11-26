@@ -1681,18 +1681,33 @@ if [ "${1-}" = snap ] || [ "${1-}" = trip ]; then
   [ -z "$w" ] || { drop; die "${msg}the main checkout could not be fingerprinted after that command ran, since $w, so what it changed there could not be checked. $ck"; }
   new=$(LC_ALL=C comm -13 "$file" "$now")
   added="" wts="" hk="" sg=""
-  while IFS= read -r l; do
-    [ -n "$l" ] || continue
-    ! grep -qxF -- "hooks $l" "$lab" || { hk=${l#core.hooksPath }; continue; }
-    ! grep -qxF -- "settings $l" "$lab" || { l=${l#settings }; sg="${sg:+$sg and }${l% *}"; continue; }
-    t="moved, renamed or re-created" a="git worktree move"
-    if grep -qxF -- "made $l" "$lab"; then t=made a=""
-    elif grep -qxF -- "moved $l" "$lab"; then case "$l" in jj*) a="" ;; esac
-    elif grep -qxF -- "kept $l" "$lab"; then case "$l" in jj*) a="jj workspace rename" ;; esac
-    else added="${added:+$added }${l% *}"; continue
-    fi
-    wts="${wts:+$wts; }${l% (*}, $t (${a:+put it back with $a, or }check what it holds before removing it with ${l##* (}"
-  done <<<"$new"
+  # One awk pass, $lab held in an array, so the cost is linear in the new
+  # lines with no process per line (a command that writes thousands of files
+  # would outlast trip's timeout otherwise). It prints four lines, each list
+  # joined at the end, never grown per line: hk, the last hooks line without
+  # core.hooksPath; sg, each settings line's path; added, each main-checkout
+  # line without its last word; wts, each worktree's report. A failing awk
+  # is a fingerprint that failed: none of it is read.
+  r=$(lab=$lab LC_ALL=C awk '
+    function last(s, p,   i, n) { n = length(p); for (i = length(s) - n + 1; i > 0; i--) if (substr(s, i, n) == p) return i; return 0 }
+    function cut(s,   i) { i = last(s, " "); return i ? substr(s, 1, i - 1) : s }
+    function join(x, n, sep,   k) { for (k = 1; k <= n; k++) printf "%s%s", (k > 1 ? sep : ""), x[k]; print "" }
+    BEGIN { while ((getline r < ENVIRON["lab"]) > 0) L[r] }
+    $0 == "" { next }
+    ("hooks " $0) in L { hk = $0; if (index(hk, "core.hooksPath ") == 1) hk = substr(hk, 16); next }
+    ("settings " $0) in L { s = $0; if (index(s, "settings ") == 1) s = substr(s, 10); S[++ns] = cut(s); next }
+    {
+      t = "moved, renamed or re-created"; a = "git worktree move"
+      if (("made " $0) in L) { t = "made"; a = "" }
+      else if (("moved " $0) in L) { if (index($0, "jj") == 1) a = "" }
+      else if (("kept " $0) in L) { if (index($0, "jj") == 1) a = "jj workspace rename" }
+      else { A[++na] = cut($0); next }
+      i = last($0, " (")
+      W[++nw] = (i ? substr($0, 1, i - 1) : $0) ", " t " (" (a != "" ? "put it back with " a ", or " : "") "check what it holds before removing it with " (i ? substr($0, i + 2) : $0)
+    }
+    END { print hk; join(S, ns, " and "); join(A, na, " "); join(W, nw, "; ") }' <<<"$new") ||
+    { drop; die "${msg}the main checkout could not be fingerprinted after that command ran, since the fingerprint failed, so what it changed there could not be checked. $ck"; }
+  { IFS= read -r hk; IFS= read -r sg; IFS= read -r added; IFS= read -r wts; } <<<"$r"
   drop
   [ -n "$added" ] && msg="${msg}that command changed the main checkout: $added. Issue work belongs in .worktrees/<issue>/. Undo it. "
   if [ -n "$hk" ]; then
