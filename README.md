@@ -181,7 +181,7 @@ The plan and questions `/hermy:start` posts on that issue are internal too. Ceil
 The edit guard, tripwire and config lock run as Claude Code and Copilot CLI hooks ([per host](docs/enforcement.md#per-host)):
 the core they run is host-neutral, and each host needs a manifest and a shim mapping its hook payload in and
 the verdict out. Another agent running the skills from `~/.hermy` gets only the git hooks, branch protection and
-the PR check.
+the PR check. [docs/threat-model.md](docs/threat-model.md) says what is in scope: the agent's tools inside the host's sandbox, prompt injection included.
 - **Edit guard.** Rejects Claude's file edits in the project outside `.worktrees/<issue>/`, and inside it before
   the issue is claimed. `.claude/` stays editable, settings files too
   ([only Claude Code's prompt holds them](docs/enforcement-limits.md#settings-files)), except `.claude/worktrees/`.
