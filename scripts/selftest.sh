@@ -26,8 +26,11 @@ holds() { read -r a b _ < "$2" && [ "$a $b" = "$1" ]; } # the owner line $2 name
 # payload names this run's session unless another is, and none when "" is;
 # the hook runs in that session's process: this one, or 1 for another session
 guard() { local s=${2-sess-a} p=1; [ "$s" != sess-a ] || p=$$; printf '{%s"tool_input":{"file_path":"%s"}}' "${s:+"\"session_id\":\"$s\","}" "$1" | CLAUDE_PID=${3-$p} run guard; }
-# wire <snap|trip> <id>: the Bash hooks, as Claude Code calls them
-wire() { printf '{"tool_use_id":"%s"}' "$2" | run "$1"; }
+# wire <snap|trip> <id>: the Bash hooks, as Claude Code calls them; trip's
+# stdout, the block verdict it prints when it trips, kept in $tmp/trip.out
+wire() { if [ "$1" = trip ]; then printf '{"tool_use_id":"%s"}' "$2" | run trip > "$tmp/trip.out"; else printf '{"tool_use_id":"%s"}' "$2" | run "$1"; fi; }
+# tblock: trip.out is one decision block, its reason trip.err, the report
+tblock() { [ "$(wc -l < "$tmp/trip.out")" -eq 1 ] && jq -e '.decision == "block"' "$tmp/trip.out" && [ "$(jq -r .reason "$tmp/trip.out")" = "$(cat "$tmp/trip.err")" ]; }
 # tripped <expected exit> <name> <shell snippet run in the main checkout>
 tripped() { wire snap w; (cd "$repo" && eval "$3") >/dev/null 2>&1; t "$1" "$2" wire trip w; }
 # shell <command> [dir]: snap before a Bash command run in dir (the main
@@ -182,14 +185,15 @@ jr='`jj workspace root --ignore-working-copy --no-pager`'
 jl="\`jj workspace list --ignore-working-copy --no-pager -T 'if(root, root ++ \"\\n\")'\`"
 pjj="$jr succeeding and lying physically below \`git rev-parse --show-toplevel\` (a jj repository nested in another git repository), or either git placement above failing or giving anything but one absolute path (a jj repository with no \`.git\`) → place them through jj: the main checkout is $jr run in the default workspace, or the directory \`.worktrees/\` sits in"
 pdin="never one at or inside the project (the main checkout: $pmain), at or inside the checkout you run in (\`git rev-parse --show-toplevel\`) or at or inside a worktree of this repository (\`git worktree list\`, and $jl in a jj repository), each compared physically, links followed; unknown, or no \`bin/hermy\` there → stop and say so; $pjj, the checkout you run in $jr, and the worktrees $jl alone, never \`git worktree list\`$pgit; git's placement only where jj gives no root or one at or above git's; neither git nor jj placing them → stop and say neither can place the project here."
-pbin="\`'<plugin dir>/bin/hermy' "
+pbin="\`HERMY_AGENT_DIR=.claude '<plugin dir>/bin/hermy' "
+pcop="A call to \`HERMY_AGENT_DIR=.claude '<plugin dir>/bin/hermy' <verb>\` denied as a path outside the working directory (Copilot's \`--allow-all-tools\` does not cover one) → stop and say this session needs \`--add-dir '<plugin dir>'\`."
 fok=("$pbin" 'hermy plugin' '`bin/hermy`' '`.hermy.yml`')
 hok=("${fok[@]}" "\`'<plugin dir>/bin/hermy'\`" "\`'<hermy>' " '`<hermy>`' 'a bare `hermy`' '`hermy` come from' 'update hermy with' '## hermy' '[hermy]' 'https://github.com/mnsami/hermy' 'hermy:begin' 'hermy:end' '`hermy:config`' '`hermy/.claude/skills/config/SKILL.md`' '`${HERMY_HOME:-$HOME/.hermy}/bin/hermy`')
 # swap <file> <marker> <from> [<to>]: the first <from> on each line holding <marker> becomes <to> (- reads stdin)
 swap() { m=$2 c=$3 r=${4-} awk 'BEGIN { m = ENVIRON["m"]; c = ENVIRON["c"]; r = ENVIRON["r"] } index($0, m) && (i = index($0, c)) { $0 = substr($0, 1, i - 1) r substr($0, i + length(c)) } 1' "$1"; }
 fb='`CLAUDE_PLUGIN_ROOT` unexpanded'
 barehermy() { r=$1; shift; for p in "$@"; do r=${r//"$p"/}; done; case "$r" in *hermy*) return 0;; esac; return 1; }
-fallback() { line=$(grep -F '`CLAUDE_PLUGIN_ROOT` unexpanded' "$1") || return 1; barehermy "$line" "${fok[@]}" && return 1; n=${1%/SKILL.md}; n=${n##*/}; n=${n%.md}; for w in "$pcond\`<plugin dir>\`, every $pq2; \`<plugin dir>\` is the directory holding this skill's \`skills/$n/SKILL.md\`, the hermy plugin's own install directory, $pdin" "\`'<plugin dir>/bin/hermy' $2\`" 'never a `bin/hermy`' ${3-}; do case "$line" in *"$w"*) ;; *) return 1;; esac; done; }
+fallback() { line=$(grep -F '`CLAUDE_PLUGIN_ROOT` unexpanded' "$1") || return 1; barehermy "$line" "${fok[@]}" && return 1; n=${1%/SKILL.md}; n=${n##*/}; n=${n%.md}; for w in "$pcond\`<plugin dir>\`, every $pq2; \`<plugin dir>\` is the directory holding this skill's \`skills/$n/SKILL.md\`, the hermy plugin's own install directory, $pdin" "$pbin$2\`" "$pcop" 'never a `bin/hermy`' ${3-}; do case "$line" in *"$w"*) ;; *) return 1;; esac; done; }
 for s in 'config status $ARGUMENTS' 'drop status $ARGUMENTS' 'migrate status' 'next status' 'onboard detect' 'refresh status' 'ship status $ARGUMENTS' 'start status $issue $onto $base `agents/`' 'triage status $ARGUMENTS'; do read -r n v a <<< "$s"; t 0 "skill $n carries the fallback for a host that does not inject" fallback "$here/skills/$n/SKILL.md" "$v" "$a"; done
 grep -vF '`CLAUDE_PLUGIN_ROOT` unexpanded' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "a skill that injects without the fallback fails it" fallback "$tmp/next.md" status
@@ -197,18 +201,18 @@ sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s/'"'"' status`/'"'"' stat`/' "$here/skill
 t 1 "one whose fallback drops the read-by-hand command fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s/\.$/ Or run `hermy status`./' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback runs a bare hermy, which PATH picks, fails it" fallback "$tmp/next.md" status
-sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`'"'"'<plugin dir>/bin/hermy'"'"' config`|`bin/hermy config`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`HERMY_AGENT_DIR=.claude '"'"'<plugin dir>/bin/hermy'"'"' config`|`bin/hermy config`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback runs a verb by a relative bin/hermy, the project's own, fails it" fallback "$tmp/next.md" status
-sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`'"'"'<plugin dir>/bin/hermy'"'"' config`|`'"'"'bin/hermy'"'"' config`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`HERMY_AGENT_DIR=.claude '"'"'<plugin dir>/bin/hermy'"'"' config`|`'"'"'bin/hermy'"'"' config`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback runs a verb by a quoted relative bin/hermy fails it" fallback "$tmp/next.md" status
-sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`'"'"'<plugin dir>/bin/hermy'"'"' config`|`"bin/hermy" config`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`HERMY_AGENT_DIR=.claude '"'"'<plugin dir>/bin/hermy'"'"' config`|`"bin/hermy" config`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback runs a verb by a double-quoted bin/hermy fails it" fallback "$tmp/next.md" status
-sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`'"'"'<plugin dir>/bin/hermy'"'"' config`|`./hermy config`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`HERMY_AGENT_DIR=.claude '"'"'<plugin dir>/bin/hermy'"'"' config`|`./hermy config`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback runs a verb by ./hermy, the working directory's, fails it" fallback "$tmp/next.md" status
-sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`'"'"'<plugin dir>/bin/hermy'"'"' config`|`exec hermy config`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`HERMY_AGENT_DIR=.claude '"'"'<plugin dir>/bin/hermy'"'"' config`|`exec hermy config`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback runs a verb by exec hermy, which PATH picks, fails it" fallback "$tmp/next.md" status
-for c in "'<plugin dir>/bin/hermy' config; hermy sweep" 'echo $(hermy config)' 'cd x; hermy config' 'cd x \&\& hermy config' 'env hermy config' 'command hermy config'; do
-  sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`'"'"'<plugin dir>/bin/hermy'"'"' config`|`'"$c"'`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+for c in "HERMY_AGENT_DIR=.claude '<plugin dir>/bin/hermy' config; hermy sweep" 'echo $(hermy config)' 'cd x; hermy config' 'cd x \&\& hermy config' 'env hermy config' 'command hermy config'; do
+  sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`HERMY_AGENT_DIR=.claude '"'"'<plugin dir>/bin/hermy'"'"' config`|`'"$c"'`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
   t 1 "one whose fallback runs a bare hermy inside a command (${c//\\/}), which PATH picks, fails it" fallback "$tmp/next.md" status
 done
 for c in "\`'<hermy>' sweep\`" '`<hermy>` config' '`${HERMY_HOME:-$HOME/.hermy}/bin/hermy` config'; do
@@ -217,6 +221,13 @@ for c in "\`'<hermy>' sweep\`" '`<hermy>` config' '`${HERMY_HOME:-$HOME/.hermy}/
 done
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|'"'"'<plugin dir>/bin/hermy'"'"' |<plugin dir>/bin/hermy |g' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback leaves the plugin-dir path unquoted, which a space, \$ or backtick in it splits or expands, fails it" fallback "$tmp/next.md" status
+# HERMY_AGENT_DIR=.claude on every call, as the Claude Code shim sets it, so
+# onboard's and migrate's agent-dir verbs run on a host with no shim; and the
+# --add-dir stop, for a host that denies a path outside the working directory.
+sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`HERMY_AGENT_DIR=.claude '"'"'<plugin dir>/bin/hermy'"'"' sweep`|`'"'"'<plugin dir>/bin/hermy'"'"' sweep`|' "$here/skills/next/SKILL.md" > "$tmp/next.md"
+t 1 "one whose fallback runs a verb without HERMY_AGENT_DIR=.claude, which onboard's and migrate's agent-dir verbs need, fails it" fallback "$tmp/next.md" status
+swap "$here/skills/next/SKILL.md" "$fb" " $pcop" > "$tmp/next.md"
+t 1 "one whose fallback goes on when a call to the plugin dir is denied, with no --add-dir stop, fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|`<plugin dir>` is the directory holding this skill'"'"'s `skills/next/SKILL.md`, ||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
 t 1 "one whose fallback drops where the plugin dir is fails it" fallback "$tmp/next.md" status
 sed '/`CLAUDE_PLUGIN_ROOT` unexpanded/s|^Only where [^:]*: ||' "$here/skills/next/SKILL.md" > "$tmp/next.md"
@@ -1098,6 +1109,116 @@ t 1 "hooks: an extra event fails it" hmut '.hooks.Stop = .hooks.PostToolUse'
 # first trip, PostToolUse's: run this one too, with its payload shape.
 failtrip() { eval "set -- $(jq -r --arg r "$here" '.hooks.PostToolUseFailure[0].hooks[0] | [.command] + .args | map(split("${CLAUDE_PLUGIN_ROOT}") | join($r)) | @sh' "$here/hooks/hooks.json")"; printf '{"hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_use_id":"w","error":"Exit code 1"}' | env CLAUDE_PROJECT_DIR="$repo" "$@"; }
 wire snap w; echo x > stray.txt; t 2 "hooks: the PostToolUseFailure entry trips on a stray file" failtrip; rm stray.txt
+# Copilot CLI's manifest, .github/plugin/plugin.json, read before
+# .claude-plugin/plugin.json, names hooks/copilot.json, and every field both
+# manifests carry is equal, so a version bump that misses one fails.
+mfeq() { jq -en --slurpfile a "$1" --slurpfile b "$2" '$a[0].hooks == "hooks/copilot.json" and ($a[0] | has("name")) and all($a[0] | to_entries[] | select(.key as $k | $b[0] | has($k)); . as $e | $b[0][$e.key] == $e.value)'; }
+t 0 "copilot: its manifest names hooks/copilot.json, its fields shared with Claude Code's equal" mfeq "$here/.github/plugin/plugin.json" "$here/.claude-plugin/plugin.json"
+jq '.version = "0.0.1"' "$here/.github/plugin/plugin.json" > "$tmp/cplugin.json"
+t 1 "copilot: a version that differs from Claude Code's fails it" mfeq "$tmp/cplugin.json" "$here/.claude-plugin/plugin.json"
+# hooks/copilot.json as one table, as hooks/hooks.json is: version 1, its
+# events and matchers, each entry type command, exec /usr/bin/env, the args
+# hooks/hooks.json gives that verb and a timeout, nothing else (no command, no
+# onFailure, which Copilot does not read), and no SessionStart (link knows
+# Claude Code's cache layout alone) or PostToolUseFailure (Copilot fires
+# PostToolUse on a failing command; both would run trip twice).
+copwant='[
+ {"e":"PreToolUse","m":"Edit|Write|NotebookEdit","v":"guard","o":10},
+ {"e":"PreToolUse","m":"Bash","v":"snap","o":60},
+ {"e":"PostToolUse","m":"Bash","v":"trip","o":60}]'
+coptable() { jq -e --argjson w "$copwant" --slurpfile h "$here/hooks/hooks.json" '(keys == ["hooks", "version"]) and .version == 1 and ([.hooks | to_entries[] | .key as $e | .value[] | (keys == ["hooks", "matcher"]) as $k | .matcher as $m | .hooks[] | {e:$e,m:$m,k:$k,h:.}] | sort_by(tojson)) == ($w | map(.v as $v | {e,m,k:true,h:{type:"command",exec:"/usr/bin/env",args:first($h[0].hooks[][].hooks[] | select(.args[-1] == $v) | .args),timeout:.o}}) | sort_by(tojson))' "$1"; }
+t 0 "copilot: the hooks table is guard, snap and trip, each with hooks.json's args" coptable "$here/hooks/copilot.json"
+cmut() { jq "$1" "$here/hooks/copilot.json" > "$tmp/copilot.json"; coptable "$tmp/copilot.json"; }
+t 1 "copilot: args that drift from hooks.json's fail it" cmut '.hooks.PreToolUse[0].hooks[0].args[1] = "BASH_ENV"'
+t 1 "copilot: an entry run by command, not exec, fails it" cmut '.hooks.PreToolUse[0].hooks[0] |= (.command = .exec | del(.exec))'
+t 1 "copilot: a SessionStart entry fails it" cmut '.hooks.SessionStart = [{"matcher":"startup","hooks":[.hooks.PostToolUse[0].hooks[0]]}]'
+t 1 "copilot: a PostToolUseFailure entry fails it" cmut '.hooks.PostToolUseFailure = .hooks.PostToolUse'
+t 1 "copilot: snap's timeout lowered fails it" cmut '.hooks.PreToolUse[1].hooks[0].timeout = 30'
+t 1 "copilot: an onFailure key fails it" cmut '.hooks.PreToolUse[0].hooks[0].onFailure = "block"'
+# cophook <verb> <payload>: hooks/copilot.json's entry for that verb, run as
+# Copilot CLI runs it: exec and args with no shell, ${CLAUDE_PLUGIN_ROOT}
+# substituted, from the plugin dir, CLAUDE_PROJECT_DIR the project and no
+# session or pid variable, its stdout and stderr kept in $tmp/cop.out and
+# $tmp/cop.err.
+cophook() { local v=$1 p=$2; eval "set -- $(jq -r --arg v "$v" --arg r "$here" 'first(.hooks[][].hooks[] | select(.args[-1] == $v)) | [.exec] + .args | map(split("${CLAUDE_PLUGIN_ROOT}") | join($r)) | @sh' "$here/hooks/copilot.json")"; (cd "$here" && printf %s "$p" | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_PID CLAUDE_PROJECT_DIR="$repo" "$@" > "$tmp/cop.out" 2> "$tmp/cop.err"); }
+# Copilot CLI's payloads: a create is Write with path and file_text, an edit
+# Edit with path, old_str and new_str, an apply_patch Edit with the patch as
+# its tool_input string; each with cwd, session_id and tool_use_id.
+cwrite() { jq -cn --arg p "$1" --arg c "$repo" '{tool_name: "Write", tool_input: {path: $p, file_text: "x"}, cwd: $c, session_id: "sess-a", tool_use_id: "cw"}'; }
+cedit() { jq -cn --arg p "$1" --arg c "$repo" '{tool_name: "Edit", tool_input: {path: $p, old_str: "hi", new_str: "ho"}, cwd: $c, session_id: "sess-a", tool_use_id: "ce"}'; }
+cpatch() { jq -cn --arg p "$(printf '*** Begin Patch\r\n*** Update File: %s\r\n@@\r\n-hi\r\n+ho\r\n*** End Patch\r\n' "$1")" --arg c "$repo" '{tool_name: "Edit", tool_input: $p, cwd: $c, session_id: "sess-a", tool_use_id: "cp"}'; }
+mkdir -p .worktrees/78 .git/hermy/78 && echo "sess-a $$" > .git/hermy/78/owner # claimed by this session
+t 2 "copilot: a Write outside any worktree is refused" cophook guard "$(cwrite "$repo/README.md")"
+t 0 "copilot: a Write in the claimed worktree passes" cophook guard "$(cwrite "$repo/.worktrees/78/a.txt")"
+t 2 "copilot: an Edit outside any worktree is refused" cophook guard "$(cedit "$repo/README.md")"
+t 0 "copilot: an Edit in the claimed worktree passes" cophook guard "$(cedit "$repo/.worktrees/78/a.txt")"
+t 2 "copilot: an apply_patch of README.md is refused" cophook guard "$(cpatch README.md)"
+t 0 "copilot: an apply_patch in the claimed worktree passes, its CRs trimmed" cophook guard "$(cpatch .worktrees/78/a.txt)"
+t 2 "copilot: an apply_patch string naming no file is refused" cophook guard "$(jq -cn --arg c "$repo" '{tool_name: "Edit", tool_input: "*** Begin Patch\n*** End Patch", cwd: $c, session_id: "sess-a"}')"
+# Copilot's parser (codex's) trims whitespace around a hunk header, so a
+# padded header counts and a path is held trimmed too; and a patch of some
+# hundreds of KB is read in time, not past the guard's deadline. The patch
+# reaches jq on stdin: Linux caps one argument at 128 KiB. intime: the
+# command's exit, when it ends within five seconds; 124 otherwise.
+craw() { printf %s "$1" | jq -Rsc --arg c "$repo" '{tool_name: "Edit", tool_input: ., cwd: $c, session_id: "sess-a", tool_use_id: "cr"}'; }
+intime() { local s=$SECONDS r; "$@"; r=$?; [ $((SECONDS - s)) -le 5 ] || r=124; return $r; }
+t 2 "copilot: an apply_patch header with whitespace before it, after an Add File in the claimed worktree, is refused" cophook guard "$(craw $'*** Begin Patch\n*** Add File: .worktrees/78/b.txt\n+x\n  *** Update File: README.md\n@@\n-hi\n+ho\n*** End Patch')"
+t 2 "copilot: an apply_patch path with trailing whitespace is held trimmed (.git) too" cophook guard "$(craw $'*** Begin Patch\n*** Update File: .worktrees/78/.git \n@@\n-hi\n+ho\n*** End Patch')"
+t 0 "copilot: an apply_patch of 340 KB in the claimed worktree passes in time" intime cophook guard "$(craw "$(awk 'BEGIN { print "*** Begin Patch\n*** Update File: .worktrees/78/a.txt\n@@"; for (i = 0; i < 8000; i++) printf "-hello world line %d\n+hello there %d\n", i, i; print "*** End Patch" }')")"
+t 2 "copilot: an apply_patch path holding a 200,000-space run is refused in time, its trim linear" intime cophook guard "$(craw "*** Begin Patch"$'\n'"*** Update File: .worktrees/78/a$(printf '%200000s' '')x"$'\n'"*** End Patch")"
+# A string in a payload over 1 MiB is not read, since reading one costs
+# about a second per MiB: no paths, which the guard refuses, in time, the
+# claimed worktree's own patch included. One just under it, the worst case
+# (a line holding "*** " every 7 bytes), is read in time and passes.
+t 2 "copilot: an apply_patch payload over 1 MiB, in the claimed worktree, is refused unread in time" intime cophook guard "$(craw "$(awk 'BEGIN { print "*** Begin Patch\n*** Update File: .worktrees/78/a.txt\n@@"; for (i = 0; i < 80000; i++) printf "-hello world %d\n", i; print "*** End Patch" }')")"
+t 0 "copilot: one just under 1 MiB of lines holding *** is read in time and passes" intime cophook guard "$(craw "$(awk 'BEGIN { print "*** Begin Patch\n*** Update File: .worktrees/78/a.txt"; for (i = 0; i < 145000; i++) print "*** x"; print "*** End Patch" }')")"
+# Every path a patch writes is read: a Move to's and a Delete File's, each
+# after a file in the claimed worktree, which alone would pass.
+t 2 "copilot: an apply_patch moving a claimed worktree's file to README.md is refused" cophook guard "$(craw $'*** Begin Patch\n*** Update File: .worktrees/78/a.txt\n*** Move to: README.md\n@@\n-hi\n+ho\n*** End Patch')"
+t 2 "copilot: an apply_patch deleting README.md after an Add File in the claimed worktree is refused" cophook guard "$(craw $'*** Begin Patch\n*** Add File: .worktrees/78/b.txt\n+x\n*** Delete File: README.md\n*** End Patch')"
+copask() { cophook guard "$(cwrite "$repo/${1:-.hermy.yml}")" && jq -e '.hookSpecificOutput.permissionDecision == "ask"' "$tmp/cop.out"; }
+t 0 "copilot: a Write of the config asks" copask
+# Copilot's own settings files, where a write can turn every hook off, are
+# asked about as the config is (the shim names them in HERMY_SETTINGS), in
+# both modes; Claude Code's in the agent dir stay the agent dir's to edit.
+cp .claude/coddy.yml "$tmp/conf.set"
+for m in block warn; do
+  [ "$m" = block ] || echo 'guard: warn' >> .claude/coddy.yml
+  t 0 "copilot: a Write of .github/copilot/settings.json asks, guard: $m" copask .github/copilot/settings.json
+  t 0 "copilot: and its ask names what the file can do" jq -e '.hookSpecificOutput.permissionDecisionReason | contains("can turn hermy")' "$tmp/cop.out"
+  t 0 "copilot: so does a Write of .github/copilot/settings.local.json, guard: $m" copask .github/copilot/settings.local.json
+  t 0 "settings: an edit of .claude/settings.json is the agent dir's, as before, guard: $m" quiet guard "$repo/.claude/settings.json"
+done
+cp "$tmp/conf.set" .claude/coddy.yml
+rm -r .worktrees/78 .git/hermy/78
+# With no absolute CLAUDE_PROJECT_DIR in a hook's environment (Copilot runs
+# the hooks from the plugin dir) the project cannot be found: guard and snap
+# refuse, printing nothing on stdout, and trip reports the command with its
+# block verdict, its reason the stderr message. nproj <verb> <env arg...>:
+# the hook as hooks/copilot.json runs it, from the plugin dir, with no
+# session or pid variable and that environment, its output kept as cophook's.
+nproj() { local v=$1; shift; eval "set -- \"\$@\" $(jq -r --arg v "$v" --arg r "$here" 'first(.hooks[][].hooks[] | select(.args[-1] == $v)) | [.exec] + .args | map(split("${CLAUDE_PLUGIN_ROOT}") | join($r)) | @sh' "$here/hooks/copilot.json")"; (cd "$here" && printf '{"tool_name":"Bash","tool_input":{"command":"true","path":"%s"},"tool_use_id":"np"}' "$repo/.worktrees/x" | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_PID "$@" > "$tmp/cop.out" 2> "$tmp/cop.err"); }
+for e in '-u CLAUDE_PROJECT_DIR' CLAUDE_PROJECT_DIR= CLAUDE_PROJECT_DIR=repo; do
+  for v in guard snap; do
+    # shellcheck disable=SC2086 # e is one env argument, or two
+    t 2 "hooks: $v refuses with $e" nproj "$v" $e
+    t 0 "hooks: printing nothing on stdout" test ! -s "$tmp/cop.out"
+    t 0 "hooks: naming CLAUDE_PROJECT_DIR" grep -q 'names no absolute project directory (CLAUDE_PROJECT_DIR)' "$tmp/cop.err"
+  done
+  # shellcheck disable=SC2086
+  t 2 "hooks: trip reports the command with $e" nproj trip $e
+  t 0 "hooks: its stdout one decision block, its reason the stderr message" sh -c '[ "$(wc -l < "$1")" -eq 1 ] && jq -e ".decision == \"block\"" "$1" >/dev/null && [ "$(jq -r .reason "$1")" = "$(cat "$2")" ]' _ "$tmp/cop.out" "$tmp/cop.err"
+done
+# A failing shell command fires PostToolUse alone, result_type success, the
+# exit code in its text: trip reports a main-checkout write, exit 2, and its
+# stdout is one decision block, its reason trip's message, which Copilot
+# shows the agent in place of the command's output.
+cbash() { jq -cn --arg c "$repo" --arg e "$1" '{tool_name: "Bash", tool_input: {command: "echo x > stray.txt; false"}, cwd: $c, session_id: "sess-a", tool_use_id: "cb"} + if $e == "" then {} else {tool_result: {result_type: "success", text_result_for_llm: "\n<shellId: 0 completed with exit code 1>"}} end'; }
+cophook snap "$(cbash '')"; echo x > stray.txt
+t 2 "copilot: trip reports a failing command's write to the main checkout" cophook trip "$(cbash post)"
+cblock() { [ "$(wc -l < "$tmp/cop.out")" -eq 1 ] && jq -e '.decision == "block" and (.reason | contains("stray.txt"))' "$tmp/cop.out" && [ "$(jq -r .reason "$tmp/cop.out")" = "$(cat "$tmp/cop.err")" ]; }
+t 0 "copilot: its stdout is one decision block, its reason trip's message" cblock
+rm stray.txt
 # Every skill's allowed-tools and body agree, both ways: each injected script
 # and issue.sh verb a body calls has a rule that glob-matches it (a trailing :*
 # read as " *", as Claude Code does), each rule is used by its own body, and
@@ -1242,7 +1363,7 @@ t 1 "skills: a comment after the key, then a list, fails the gate" skopen '# not
 # or snap a 2 with a message, a core it cannot read included, and a hermy
 # crash blocks the call; trip keeps its own.
 mkdir -p "$tmp/fk/scripts" "$tmp/fk/bin"; cp "$here/scripts/issue.sh" "$tmp/fk/scripts/"
-fk() { printf '{}' | "$1" -p "$tmp/fk/scripts/issue.sh" "$2" 2>"$tmp/fk.err"; }
+fk() { printf '{}' | CLAUDE_PROJECT_DIR="$repo" "$1" -p "$tmp/fk/scripts/issue.sh" "$2" 2>"$tmp/fk.err"; }
 for sh in bash /bin/bash; do
   for c in 'exit 1' 'set -u; echo "$nope"' missing; do
     rm -f "$tmp/fk/bin/hermy"; [ "$c" = missing ] || echo "$c" > "$tmp/fk/bin/hermy"
@@ -1251,7 +1372,7 @@ for sh in bash /bin/bash; do
       t 0 "hooks: and says so: $v, $c, under $sh" grep -q "hermy: the $v hook failed (exit [0-9]*), so the call is refused" "$tmp/fk.err"
       t 0 "hooks: and names what to do, in plain text: $v, $c, under $sh" grep -q "until the user updates or reinstalls the hermy plugin, or disables it\.$" "$tmp/fk.err"
     done
-    t 1 "hooks: trip keeps its own exit on a core that ends $c, under $sh" sh -c 'fk() { printf "{}" | "$1" -p "$2" trip; }; fk "$1" "$2"; r=$?; [ "$r" = 0 ] || [ "$r" = 2 ]' - "$sh" "$tmp/fk/scripts/issue.sh"
+    t 1 "hooks: trip keeps its own exit on a core that ends $c, under $sh" sh -c 'fk() { printf "{}" | CLAUDE_PROJECT_DIR="$3" "$1" -p "$2" trip; }; fk "$1" "$2" "$3"; r=$?; [ "$r" = 0 ] || [ "$r" = 2 ]' - "$sh" "$tmp/fk/scripts/issue.sh" "$repo"
   done
   for c in 0 2; do echo "exit $c" > "$tmp/fk/bin/hermy"; for v in guard snap; do t "$c" "hooks: $v keeps exit $c, under $sh" fk "$sh" "$v"; t 0 "hooks: and adds nothing: $v $c, under $sh" test ! -s "$tmp/fk.err"; done; done
 done
@@ -1438,11 +1559,11 @@ printf 'tracker: github\ndefault_branch: main\n' > .claude/coddy.yml; cp .claude
 hook snap "$(payload true)" >/dev/null; echo x > stray.txt
 t 2 "tools: trip refuses a stray file with git in the project alone" hook trip '{"tool_use_id":"sh"}' PATH="$repo/nm:$tmp/nogit"
 hook snap "$(payload true)" >/dev/null; rm .claude/coddy.yml
-hook trip '{"tool_use_id":"sh"}' PATH="$repo/nm:$tmp/nogit" 2>"$tmp/tools.err"
+hook trip '{"tool_use_id":"sh"}' PATH="$repo/nm:$tmp/nogit" >"$tmp/tools.out" 2>"$tmp/tools.err"
 t 0 "tools: trip puts the config back first" cmp -s .claude/coddy.yml "$tmp/conf.tools"
 t 0 "tools: and names git" grep -q 'no git is on PATH outside the project' "$tmp/tools.err"
 hook snap "$(payload true)" >/dev/null; mkdir .jj
-hook trip '{"tool_use_id":"sh"}' PATH="$repo/nm:$tmp/gitonly:$tmp/nogit" 2>"$tmp/tools.err"; got=$?
+hook trip '{"tool_use_id":"sh"}' PATH="$repo/nm:$tmp/gitonly:$tmp/nogit" >"$tmp/tools.out" 2>"$tmp/tools.err"; got=$?
 t 0 "tools: trip refuses a command that left a .jj at the root with jj in the project alone" test "$got" = 2
 t 0 "tools: and names jj" grep -q 'no jj is on PATH outside the project' "$tmp/tools.err"
 rm -r .jj nm stray.txt "$tmp/nogit" "$tmp/gitonly"; cp "$tmp/exclude" .git/info/exclude
@@ -1467,6 +1588,7 @@ rmdir "$repo/we\"ird"
 hout() { bash -c 'eval "$(sed -n "/^hermy_out() /,/^}/p" "$1")"; hermy_out "$2"; echo after' _ "$here/scripts/issue.sh" "$1"; }
 t 0 "shim: an ask still maps to permissionDecision ask" jq -e '.hookSpecificOutput.permissionDecision == "ask" and .hookSpecificOutput.permissionDecisionReason == "a\"b"' <<<"$(hout '{"hermy":"ask","text":"a\"b"}' | head -n1)"
 t 0 "shim: a note still maps to additionalContext" jq -e '.hookSpecificOutput.additionalContext == "n" and (.hookSpecificOutput | has("permissionDecision") | not)' <<<"$(hout '{"hermy":"note","text":"n"}' | head -n1)"
+t 0 "shim: trip's block maps to a decision block, its reason the text" jq -e '. == {"decision": "block", "reason": "a\"b}"}' <<<"$(hout '{"hermy":"block","text":"a\"b}"}' | head -n1)"
 t 0 "warn: guard lets an unclaimed worktree through with the message" warned "$repo/.worktrees/77/a.txt"
 mkdir -p .git/hermy/77 && echo "sess-z 1" > .git/hermy/77/owner # claimed by another session, in another process
 t 0 "warn: guard lets another session's worktree through, naming the owner" warned "$repo/.worktrees/77/a.txt" sess-a "belongs to session sess-z"
@@ -1492,7 +1614,7 @@ mkdir "$tmp/badfind"; printf '#!/bin/sh\nexit 1\n' > "$tmp/badfind/find"; chmod 
 for v in block warn; do
   printf 'tracker: github\ndefault_branch: main\nguard: %s\n' "$v" > .claude/coddy.yml
   PATH="$tmp/badjq:$PATH" t 2 "guard: $v blocks the main checkout with a jq that fails" saying 'could not read the hook payload with jq' guard "$repo/README.md"
-  for p in '{}' '' 'null' '[]' '{"tool_input":"x"}' '{bad' '{"tool_input":{"file_path":null}}' "{\"tool_input\":{\"path\":\"$repo/x\"}}"; do
+  for p in '{}' '' 'null' '[]' '{"tool_input":"x"}' '{bad' '{"tool_input":{"file_path":null}}' '{"tool_input":{"edit_path":"x"}}'; do
     t 2 "guard: $v blocks a payload naming no path: ${p:-empty}" saying 'the edit guard could not read' raw "$p"
   done
   # A path still read where the payload names one: a NotebookEdit's, and a
@@ -1672,6 +1794,7 @@ wire snap mv; git mv README.md MOVED.md
 wire trip mv 2>"$tmp/trip.err"; got=$?
 t 0 "tripwire: a staged rename trips" test "$got" = 2
 t 0 "tripwire: and names both of its paths whole" grep -q 'main checkout: MOVED.md README.md\.' "$tmp/trip.err"
+t 0 "tripwire: and its stdout is one decision block, its reason that report" tblock
 git mv MOVED.md README.md
 # A thousand dirty files cost one hash-object, not one each: a git on PATH
 # that logs every hash-object it runs.
@@ -2522,6 +2645,14 @@ t 0 "settings: naming the file" grep -qF "that command changed .claude/settings.
 rm .claude/settings.json
 rm -rf "settings .claude"
 rm -f .claude/settings.json .claude/settings.local.json
+# Copilot CLI's settings files, which the shim hands the core whatever the
+# environment holds: a shell write of disableAllHooks into a git-ignored
+# .github/copilot/settings.local.json trips with the settings report.
+mkdir -p .github/copilot; echo .github/copilot/settings.local.json >> .git/info/exclude
+t 0 "settings: .github/copilot/settings.local.json is git-ignored here" git check-ignore -q .github/copilot/settings.local.json
+HERMY_SETTINGS=none setting 2 "settings: a shell write of disableAllHooks into .github/copilot/settings.local.json trips, an inherited HERMY_SETTINGS ignored" .github/copilot/settings.local.json '{"disableAllHooks":true}'
+t 0 "settings: naming the file and what a change there can do" grep -qF "that command changed .github/copilot/settings.local.json, the agent's settings for this project, where a change can turn hermy's hooks off" "$tmp/trip.err"
+rm -r .github/copilot; rmdir .github 2>/dev/null
 # detect <line> [VAR=value...]: detect.sh prints exactly that line
 detect() { line=$1; shift; env CLAUDE_PROJECT_DIR="$repo" "$@" "$BASH" "$here/scripts/detect.sh" 2>/dev/null | grep -qx "$line"; }
 detect_remote() {

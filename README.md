@@ -43,7 +43,7 @@ claude plugin marketplace add mnsami/hermy   # or a local path to this repo
 claude plugin install hermy@hermy
 ```
 
-For another agent (Codex, Cursor, Copilot CLI, Gemini CLI or Antigravity CLI) or your own terminal:
+For another agent (Codex, Cursor, Gemini CLI or Antigravity CLI) or your own terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mnsami/hermy/main/get.sh | bash
@@ -55,8 +55,8 @@ curl -fsSL https://raw.githubusercontent.com/mnsami/hermy/main/get.sh | bash
   The plugin keeps its own copy.
 - `hermy doctor` says which install runs. In a project it lists what is missing or off. It changes nothing.
 
-hermy runs on macOS, Linux and WSL. As a plugin it needs the Claude Code CLI: claude.ai and Cowork do not
-install a plugin with a top-level `bin/`. [Native Windows](docs/enforcement.md#native-windows) is not supported.
+hermy runs on macOS, Linux and WSL. As a plugin it needs the Claude Code CLI or Copilot CLI: claude.ai and Cowork
+do not install a plugin with a top-level `bin/`. [Native Windows](docs/enforcement.md#native-windows) is not supported.
 
 You need:
 - bash 3.2 or later, and `git`. The hooks find them [on `PATH`, outside the project](docs/enforcement.md#bash-and-path).
@@ -88,9 +88,27 @@ For Copilot CLI, add the GitLab and/or Atlassian server to `~/.copilot/mcp-confi
 }
 ```
 
-In interactive Copilot CLI, a skill's `allowed-tools` pre-approves MCP tools only by Copilot's own
-`<server>-<tool>` or `<server>(<tool>)` name, not hermy's Claude-named entries (#415). Headless `-p`
+In interactive Copilot CLI, a skill's `allowed-tools` pre-approves the MCP tools it names. Headless `-p`
 does not pre-approve them; pass `--allow-tool='<server>(<tool>)'`. Claude Code keeps its existing rules.
+
+### Copilot CLI
+
+```bash
+copilot plugin install <path to a hermy checkout>
+```
+
+- The marketplace route, from Copilot's docs and not yet measured with hermy:
+  `copilot plugin marketplace add mnsami/hermy`, then `copilot plugin install hermy@hermy`.
+- Copilot reads `.github/plugin/plugin.json`, whose hooks are `hooks/copilot.json`: the same edit guard, tripwire
+  and config lock, through the same launcher. Where Copilot holds less than Claude Code, see the
+  [per-host table](docs/enforcement.md#per-host).
+- Trust the folder. Copilot runs no plugin hook in a folder it does not trust, and says nothing: every guardrail is off.
+  An interactive session asks for trust at start; a headless `-p` run needs `--trust-folder`.
+- The skills run `bin/hermy` from the plugin's install directory (`copilot plugin install` copies it under
+  `~/.copilot/installed-plugins/`), outside your project. Pass `--add-dir '<plugin dir>'`: `--allow-all-tools`
+  does not cover a path outside the working directory, and a skill stops and says so when that call is denied.
+- `--add-dir` also lets Copilot's tools write that directory, which holds the hooks themselves. The edit guard
+  refuses an edit there, but a shell command can rewrite a hook unseen and turn off every hook after it.
 
 ## Quick start
 
@@ -160,9 +178,10 @@ The plan and questions `/hermy:start` posts on that issue are internal too. Ceil
 ## How it enforces
 
 [docs/enforcement.md](docs/enforcement.md) has one section per layer: what it stops, lets through and misses.
-The edit guard, tripwire and config lock run as Claude Code hooks only, until another host's shim lands: the core
-they run is host-neutral, and each host needs a shim mapping its hook payload in and the verdict out.
-Another agent running the skills from `~/.hermy` gets only the git hooks, branch protection and the PR check.
+The edit guard, tripwire and config lock run as Claude Code and Copilot CLI hooks ([per host](docs/enforcement.md#per-host)):
+the core they run is host-neutral, and each host needs a manifest and a shim mapping its hook payload in and
+the verdict out. Another agent running the skills from `~/.hermy` gets only the git hooks, branch protection and
+the PR check.
 - **Edit guard.** Rejects Claude's file edits in the project outside `.worktrees/<issue>/`, and inside it before
   the issue is claimed. `.claude/` stays editable, settings files too
   ([only Claude Code's prompt holds them](docs/enforcement-limits.md#settings-files)), except `.claude/worktrees/`.

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Claude Code adapter: hands Claude's environment to the core as its HERMY_*
+# Claude Code adapter, Copilot CLI's too (hooks/copilot.json runs it as
+# hooks/hooks.json does, and Copilot sets CLAUDE_PROJECT_DIR in a hook's
+# environment): hands Claude's environment to the core as its HERMY_*
 # inputs, always, so an inherited HERMY_* value (a settings env, a hostile
 # shell) is ignored, drops every GIT_* but the identity, ssh and credential-prompt ones (a
 # GIT_DIR there would resolve the root in another repository, where no
@@ -50,8 +52,13 @@ esac
 # hooks: off, with the causes, when snap left no mark for this session
 # before them.
 HERMY_HOOKS=1
+# HERMY_SETTINGS: Copilot CLI's settings files, where it reads
+# disableAllHooks and enabledPlugins, which snap and trip then hold as
+# they hold .claude's. Set on Claude Code too, which cannot be told apart
+# here, and reads neither.
+HERMY_SETTINGS=.github/copilot/settings.json:.github/copilot/settings.local.json
 HERMY_ROOT="${CLAUDE_PROJECT_DIR-}" HERMY_SESSION="${CLAUDE_CODE_SESSION_ID-}" HERMY_PID="${CLAUDE_PID-}" HERMY_AGENT_DIR=.claude
-export HERMY_ROOT HERMY_SESSION HERMY_PID HERMY_AGENT_DIR HERMY_HOOKS
+export HERMY_ROOT HERMY_SESSION HERMY_PID HERMY_AGENT_DIR HERMY_HOOKS HERMY_SETTINGS
 # Claude Code's hook payload as the core's neutral input. The call id and
 # session are read with sed, as the core did, so snap without jq and trip with
 # it name the same snapshot. With jq the session is the payload's top-level
@@ -61,17 +68,30 @@ export HERMY_ROOT HERMY_SESSION HERMY_PID HERMY_AGENT_DIR HERMY_HOOKS
 # sed read it on both branches: its JSON spelling (a \u escape kept, not
 # decoded), control characters dropped, which jq would print as \u escapes
 # on one side alone.
-# paths holds file_path and notebook_path both, when both are there, so the
-# guard holds the edit to each; a non-null one that is no string fails jq.
+# paths holds file_path, notebook_path and path (Copilot CLI's), each that is
+# there, so the guard holds the edit to each; a non-null one that is no
+# string fails jq. A tool_input that is a string is Copilot CLI's apply_patch:
+# paths holds every file its Update File, Add File, Delete File and Move to
+# lines name, and none for a string naming none, which the guard refuses.
+# Copilot's parser (codex's) trims whitespace around a hunk header, so a
+# header with leading whitespace counts too, and each path is held as
+# written and trimmed. Split as a plain string, not a regex: jq's regex
+# split is quadratic, and a guard past its timeout lets Copilot's edit through.
+# Trimmed by one match anchored at the start, for the same reason: an
+# unanchored sub of trailing whitespace is quadratic in a run of it inside
+# the path. Even so, reading one costs up to about a second per MiB (a
+# million lines holding "*** "), so a string in a payload over 1 MiB is not
+# read: no paths, which the guard refuses.
 # When jq is missing or fails, the raw payload rides along after a word that
 # is no JSON, so the core's jq fails on it and refuses.
 hermy_in() {
-  local r id ss
+  local r id ss big
   r=$(cat)
+  big=$(LC_ALL=C; [ "${#r}" -le 1048576 ] && echo false || echo true)
   id=$(sed -n 's/.*"tool_use_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$r" 2>/dev/null | head -n1)
   ss=$(sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' <<<"$r" 2>/dev/null | head -n1)
   ss=${ss//[[:cntrl:]]/}
-  if command -v jq >/dev/null && o=$(jqh -cn --arg c "$id" --arg s "$ss" '[inputs] | if length == 1 then .[0] | {paths: [.tool_input | objects | (.file_path, .notebook_path) | select(. != null) | if type == "string" then . else error("a path that is not a string") end], command: (.tool_input.command // ""), cwd: (.cwd // ""), call: $c, session: (.session_id | if type == "string" then (if [explode[] | select((. < 48 or . > 57) and (. < 65 or . > 90) and (. < 97 or . > 122) and . != 45 and . != 95)] == [] then . else $s end) else $s end)} else error("not one value") end' <<<"$r" 2>/dev/null); then
+  if command -v jq >/dev/null && o=$(jqh -cn --arg c "$id" --arg s "$ss" --argjson big "$big" '[inputs] | if length == 1 then .[0] | {paths: [.tool_input | if type == "string" then if $big then empty else [split("\n")[] | select(contains("*** ")) | rtrimstr("\r") | capture("^[\\s\u001c-\u001f]*\\*\\*\\* (?:(?:Update|Add|Delete) File|Move to): (?<p>.+)$") | .p | (., capture("^(?<t>(?:.*[^\\s\u001c-\u001f])?)[\\s\u001c-\u001f]*$").t)] | unique[] end else objects | (.file_path, .notebook_path, .path) | select(. != null) | if type == "string" then . else error("a path that is not a string") end end], command: ((.tool_input | objects | .command) // ""), cwd: (.cwd // ""), call: $c, session: (.session_id | if type == "string" then (if [explode[] | select((. < 48 or . > 57) and (. < 65 or . > 90) and (. < 97 or . > 122) and . != 45 and . != 95)] == [] then . else $s end) else $s end)} else error("not one value") end' <<<"$r" 2>/dev/null); then
     printf '%s\n' "$o"
   else
     printf 'hermy-unreadable %s "call":"%s","session":"%s"\n' "$r" "$id" "$ss"
@@ -79,11 +99,17 @@ hermy_in() {
 }
 # The core's verdict line as Claude Code's hook JSON, by parameter expansion
 # alone: the text is already a JSON string, so it moves over byte for byte.
-# A line that is neither verdict refuses the call (exit 2), so an ask is
+# trip's block, printed before its exit 2, is the decision block a
+# PostToolUse hook prints: Copilot CLI reads it on that exit and shows the
+# model its reason, which it does not with stderr; Claude Code reads stderr.
+# A line that is no verdict refuses the call (exit 2), so an ask is
 # never let through without its permissionDecision.
 hermy_out() {
-  local l=$1 n='{"hermy":"note","text":' a='{"hermy":"ask","text":'
-  if [[ $l == "$n"*'}' ]]; then
+  local l=$1 n='{"hermy":"note","text":' a='{"hermy":"ask","text":' b='{"hermy":"block","text":'
+  if [[ $l == "$b"*'}' ]]; then
+    l=${l#"$b"}
+    printf '%s\n' "{\"decision\":\"block\",\"reason\":${l%\}}}"
+  elif [[ $l == "$n"*'}' ]]; then
     l=${l#"$n"}
     printf '%s\n' "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":${l%\}}}}"
   elif [[ $l == "$a"*'}' ]]; then
@@ -94,4 +120,17 @@ hermy_out() {
     exit 2
   fi
 }
+# The hooks find the project by CLAUDE_PROJECT_DIR alone: Copilot CLI runs
+# them from the plugin dir, so one with none, or a relative one, would
+# resolve the root there, find no config and go inert. So guard and snap
+# refuse the call, and trip reports the command, block verdict and all.
+# Claude Code always sets it.
+case "${1-}" in guard|snap|trip) case "${CLAUDE_PROJECT_DIR-}" in /*) ;; *)
+  m="hermy: the hook's environment names no absolute project directory (CLAUDE_PROJECT_DIR), so hermy cannot find the project"
+  if [ "$1" = trip ]; then
+    m="$m, and what that command changed could not be checked. Check by hand what it did."
+    echo "$m" >&2; hermy_out "{\"hermy\":\"block\",\"text\":\"$m\"}"
+  else echo "$m, and refuses the call." >&2; fi
+  exit 2 ;; esac ;;
+esac
 . "${0%/*}/../bin/hermy"

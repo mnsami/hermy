@@ -60,6 +60,7 @@ verdict stay.
 - A `failed` flag: `trip` does not read whether the command failed, and
   Claude Code fires exactly one of `PostToolUse` and `PostToolUseFailure`
   per command, Copilot `PostToolUse` alone, so `trip` already runs once.
+  #33 keeps it out: its manifest registers `trip` on `PostToolUse` alone.
 
 ## Anti-goals
 
@@ -112,6 +113,18 @@ of more than some forty paths is refused under the 64 cap and must be split.
 - allow: exit 0, nothing printed.
 - ask: exit 0, `{"hermy":"ask","text":"…"}`.
 - note: exit 0, `{"hermy":"note","text":"…"}`.
+- block, `trip`'s alone (#33): `{"hermy":"block","text":"…"}`, its text the
+  stderr message, then exit 2 as above. Copilot shows a `PostToolUse` exit
+  2's stderr to the user alone, and reads a `{"decision":"block","reason":…}`
+  on stdout with it, the model seeing `Tool result blocked: <reason>` in
+  place of the command's output; Claude Code reads stderr on an exit 2. The
+  Claude shim maps it to that decision block. A report that the command ran
+  unchecked and nothing else has none: `snap`'s note told the model already,
+  and the verdict would take the place of the command's output on every
+  command while the checkout stays too big or a source keeps failing.
+  `guard` and `snap` print none:
+  Copilot reads no stdout on a `PreToolUse` exit 2, and a deny on exit 0
+  would fail open wherever the JSON is not read.
 
 `text` is a JSON string the core escapes as today. The shim maps ask to the
 host's ask envelope and note to the host's context envelope, by jq when it

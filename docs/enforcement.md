@@ -78,13 +78,86 @@ Each layer has the same rows. A row is left out when it does not apply.
   An admin who wants managed hooks alone keeps hermy's by force-enabling `hermy@hermy` in the managed `enabledPlugins`.
 - With the hooks off, the edit guard, the tripwire and the config lock are off.
   Only the git hooks, branch protection and the PR check hold.
-- The edit guard, the tripwire and the config lock are Claude Code hooks.
-  Another agent that runs the skills from `~/.hermy` (Codex, Cursor, Copilot CLI, Gemini CLI, Antigravity CLI)
+- The edit guard, the tripwire and the config lock are Claude Code and Copilot CLI hooks ([per host](#per-host)).
+  Another agent that runs the skills from `~/.hermy` (Codex, Cursor, Gemini CLI, Antigravity CLI)
   never has them. It gets only the git hooks, branch protection and the PR check.
 - Each shell hook leaves a mark for its session. `/hermy:start` looks for it before it creates or claims the worktree.
   With none, it prints `hooks: off` and the causes, and asks you before it claims the issue.
 - That check reads the session's own mark. A session with its hooks off is caught only when it runs `/hermy:start`
   itself, and a shell command can make the mark. It is a check, not a guardrail.
+
+## Per host
+
+Claude Code reads `.claude-plugin/plugin.json` and `hooks/hooks.json`. Copilot CLI reads `.github/plugin/plugin.json`
+first, and its `hooks/copilot.json`. Both run the same launcher, shim and core. Measured on Copilot CLI 1.0.114 and 1.0.115.
+
+| Layer | Claude Code | Copilot CLI |
+|---|---|---|
+| Edit guard | blocks, the agent told why | blocks, the agent told only `hook exited with code 2` |
+| Config ask (`.hermy.yml`) | asks, with the reason | asks, without the reason; headless, the ask is a deny that shows the reason |
+| Shell tripwire | warns after the command, the report to the agent | warns after the command, the report in place of the command's output |
+| Config lock | puts the config back and warns | puts the config back and warns, as the tripwire does |
+| Git hooks | block, a sandboxed command cannot rewrite them | block, but inside `--sandbox` a command can rewrite them |
+| PR check | blocks the merge once you require it | the same |
+| Branch protection | blocks | the same |
+
+On Copilot CLI:
+
+- In a folder Copilot does not trust, no plugin hook runs and nothing says so: the edit guard, the tripwire and the
+  config lock are inert. An interactive session asks for trust at start; a headless run needs `--trust-folder`.
+- A timeout lets the call through, on every event. The timeouts are 10 seconds for the edit guard and 60 for the
+  shell check and the tripwire. hermy's own budgets bound the work they time: the edit guard's walks end by about
+  9 seconds, and the record of the main checkout stops at 20. A main checkout too large for 20 seconds runs every
+  command unchecked, each reported after it ran (300,000 untracked files take about 25 seconds under bash 5).
+- The budgets do not bound a stall. Every stall that Claude Code blocks from 2.1.295 lets the call through here:
+  - a huge sparse `.hermy.yml`, which holds the edit guard past its 10 seconds;
+  - a FIFO a command plants at a snapshot record's name, which holds the shell check past its 60 seconds. The command
+    runs, and the tripwire then reports its snapshot lost;
+  - git waiting on a FIFO the hooks do not check before their first git call: a file a git config includes,
+    `config.worktree`, the admin dir of a linked worktree the session opened in, or a `HEAD` in a directory without a
+    `.git` between where the session opened and the main checkout.
+- A FIFO at a `.git`'s own `HEAD`, `commondir` or `config` on the way up from where the session opened, or at the
+  common dir's `config`, is refused at once by every hook, on Claude Code too, before git runs. So is a `commondir`
+  or `config` there over 16 MiB, which git would read whole.
+- A hook that Copilot gives no absolute project directory refuses the call, and the tripwire reports the command:
+  run from the plugin's directory, it would find no project and check nothing.
+- An `apply_patch` over 1 MiB is refused unread, since reading one could outlast the edit guard's timeout. Split it.
+- A relative path in an `apply_patch` is read, as Copilot writes it, against the session's directory, which a shell
+  `cd` does not move (measured on 1.0.115).
+- A hermy crash in the edit guard or the shell check still refuses the call: any exit other than 0 denies there.
+- A refusal by the edit guard or the shell check reaches the agent as `Denied by preToolUse hook: hook exited with
+  code 2`, without the reason. The `AGENTS.md` block names `/hermy:start` as the way in.
+- The tripwire's report replaces the command's output: the agent sees `Tool result blocked:` and the report, not
+  what the command printed. A failing command fires the same hook as one that succeeds.
+  A command the shell check already said runs unchecked is the exception: a report saying only that goes to your
+  terminal, and the agent sees the command's output.
+- A shell command started in the background (an async shell call) fires the tripwire when it starts, so what it
+  writes later goes unseen, as a background command does on Claude Code. Copilot 1.0.115 headless has no tool to
+  write input to a running shell.
+- The hooks run for a sub-agent's calls too.
+- Under `--sandbox` the hooks run inside the sandbox, and a shell command can write `.git/hooks` and `.git/config`.
+- There is no session start hook, so the git hooks run the `bin/hermy` of the install that last ran `/hermy:start`.
+- Copilot's edit tool writes `.claude/` with no prompt, settings files included. Copilot reads hooks from
+  `.claude/settings.json` and `settings.local.json` too; the tripwire reports a shell write to either.
+- Copilot also reads `disableAllHooks` and `enabledPlugins` from `.github/copilot/settings.json` and
+  `settings.local.json`, and either can turn hermy's hooks off. The tripwire reports a shell write to either, git-ignored
+  or not, as it does `.claude/`'s. The edit guard asks before an edit of either, in both modes, as it does for
+  `.hermy.yml`: of the file once it exists, by whatever path or link reaches it, and, before it exists, at its own path
+  with no link on the way, or in its directory once that exists.
+- The edit guard does not ask before an edit that creates either file in two cases:
+  - Through a link, while its directory does not resolve yet. A shell command makes `.github/copilot` a link to a
+    place not made yet (`../.claude/hc`, a claimed worktree, outside the project). An edit of the link's target then
+    creates the file Copilot reads, in both modes. The tripwire reports the link only as a new path in the main
+    checkout, naming no settings file, and not at all when git ignores it. It does not see the edit, and the shell
+    check before the next command records the new file as it finds it.
+  - Through a directory in another case, not made yet, on a disk that ignores case (`.github/Copilot/settings.json`).
+    The edit guard refuses that as an edit in the main checkout, but under `guard: warn` it goes through, and
+    nothing reports the file.
+- `--add-dir '<plugin dir>'`, which the skills need, lets Copilot's tools write the plugin's install, where the hooks
+  run from. The edit guard refuses an edit there. A shell command can still rewrite it, unseen, and turn off every
+  hook after it.
+- A claim taken on Copilot names no session (#414), so the edit guard does not hold edits in its worktree to one
+  session.
 
 ## Platform
 
@@ -137,7 +210,8 @@ A `PreToolUse` hook on Edit, Write and NotebookEdit.
     That includes `.claude/settings.json` and `settings.local.json`, where an edit can set `disableAllHooks`.
     Only Claude Code's protected-path prompt holds them, and `bypassPermissions` and auto mode skip it
     ([details](enforcement-limits.md#settings-files)).
-  - Files outside the project. They are refused once the config was removed (see Config lock).
+  - Files outside the project, except the hermy install the hooks run from. They are refused once the config was
+    removed (see Config lock).
 - **Asks you first:** any edit of `.hermy.yml`, by whatever path it reaches the file.
   A symlink or hard link from a worktree counts.
   While a config from before the rename is live (`.coddy.yml`, else `.claude/coddy.yml`), the same goes for it
@@ -148,9 +222,18 @@ A `PreToolUse` hook on Edit, Write and NotebookEdit.
   the edit is denied and the file stays as it was.
   That was checked in `-p` alone, where an ask nobody answers is a deny.
   What an interactive bypass session shows is not known.
+  It asks the same way, in both modes, before an edit of Copilot CLI's `.github/copilot/settings.json` and
+  `settings.local.json`, where a change can turn hermy's hooks off: by whatever path or link the edit reaches the
+  file once it exists, and, before it exists, at its own path with no link on the way, or in its directory once that
+  exists. An edit that creates either file through a link while its directory does not resolve yet, or through a
+  directory in another case not made yet, is not asked about ([per host](#per-host)).
+  It asks only after the refusals below, so a settings path, or a directory above it, linked into a `.git`, a `.jj` or
+  the hermy install is refused. `.claude/settings.json` stays as it was.
 - **Always refuses:**
   - a file inside a `.git` or `.jj` below the project root;
   - a hard-linked file other than `.hermy.yml`, pnpm's store links in `node_modules` included;
+  - a file in the hermy install the hooks run from, where an edit would change or turn off every hook after it,
+    unless the install lies in the project (`claude --plugin-dir .` in hermy's own repository);
   - a path it cannot read or follow: over 4096 bytes, through `/proc` or macOS's `/.vol`, or one that is
     Windows-style (a drive letter, a backslash, a leading `//`);
   - every edit, where bash itself runs on native Windows;
