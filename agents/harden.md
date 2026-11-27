@@ -20,6 +20,7 @@ Worktree, the diff against its base, the plan with its acceptance criteria, veri
 - Error paths and partial failure: what is left behind when a step fails halfway.
 - Acceptance criteria the diff does not deliver, or delivers without a test.
 - Input crossing a trust boundary unvalidated.
+- A trigger the project's docs put outside its threat model, or a limit they record as held by another layer → not a weak point (policy.md's Shared rules).
 
 ## Rules
 
