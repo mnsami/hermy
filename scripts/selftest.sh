@@ -114,6 +114,8 @@ for r in cover resume handoff ideas; do
 done
 { cat "$here/skills/start/SKILL.md"; echo 'See references/ideas.md.'; } > "$tmp/start.md"
 t 1 "a reference named twice fails it" once "$tmp/start.md" ideas
+t 0 "start stops on a reference it cannot read" grep -qF 'A reference named below that cannot be read → stop and show its path.' "$here/skills/start/SKILL.md"
+t 0 "start follows cover.md at every step, not a few" grep -qF 'references/cover.md` and follow it from then on.' "$here/skills/start/SKILL.md"
 # Each agent's frontmatter: its name, a description that keeps it inside
 # hermy:start, model: inherit for a call that passes none, and its tools. A
 # tools line is an allowlist and none inherits every tool, so the four that
