@@ -108,10 +108,16 @@ t 0 "start stops on a brief's no policy path" grep -qF 'A brief that returns `no
 bytes() { [ $(( $(wc -c < "$1") )) -lt "$2" ]; }
 t 0 "start's SKILL.md is under 29,000 bytes" bytes "$here/skills/start/SKILL.md" 29000
 once() { [ $(( $(grep -o "references/$2\.md" "$1" | wc -l) )) -eq 1 ] && grep -qF "→ read \`\${CLAUDE_PLUGIN_ROOT}/skills/start/references/$2.md\` and follow it" "$1"; }
+# The host fills in $issue and the rest in SKILL.md alone, never in a file read
+# later: a reference says what $issue stands for and holds no other of them.
+refvars() { grep -qF '`$issue` here stands for the id of the issue `start` runs on: nothing fills it in for this file.' "$1" && ! grep -qE '[$][{]?(CLAUDE_PLUGIN_ROOT|onto|base|ARGUMENTS)' "$1"; }
 for r in cover resume handoff ideas; do
   t 0 "start's references/$r.md exists" test -f "$here/skills/start/references/$r.md"
   t 0 "start names references/$r.md once, on the line carrying its condition" once "$here/skills/start/SKILL.md" "$r"
+  t 0 "start's references/$r.md says what \$issue stands for and holds no other variable" refvars "$here/skills/start/references/$r.md"
 done
+{ cat "$here/skills/start/references/handoff.md"; echo 'Run `/hermy:start $base` first.'; } > "$tmp/handoff.md"
+t 1 "a reference holding \$base fails it" refvars "$tmp/handoff.md"
 { cat "$here/skills/start/SKILL.md"; echo 'See references/ideas.md.'; } > "$tmp/start.md"
 t 1 "a reference named twice fails it" once "$tmp/start.md" ideas
 t 0 "start stops on a reference it cannot read" grep -qF 'A reference named below that cannot be read → stop and show its path.' "$here/skills/start/SKILL.md"

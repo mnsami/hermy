@@ -1,6 +1,6 @@
 # Cover
 
-`start` reads this file when its cover line holds and follows it from then on. Each part applies at the step it names.
+`start` reads this file when its cover line holds and follows it from then on. Each part applies at the step it names. `$issue` here stands for the id of the issue `start` runs on: nothing fills it in for this file.
 
 ## Every step
 

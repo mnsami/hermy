@@ -1,5 +1,5 @@
 # Ideas
 
-`start` reads this file at step 11 when `state $issue` holds a non-empty `idea` line.
+`start` reads this file at step 11 when `state $issue` holds a non-empty `idea` line. `$issue` here stands for the id of the issue `start` runs on: nothing fills it in for this file.
 
 List the `idea` lines from `state $issue` (empty `idea` lines are ignored) and ask, for each: fold in, triage, or drop; one that is another case of a limit the project's docs already record → offer drop alone, never triage, naming where it is recorded. Triage → `state $issue "triage+=<line>"` for each, before `idea=` is cleared, then say: run `/hermy:triage`. Folded in → add them to the acceptance criteria, restate `Simplest:` and `Plan adds:` for the extended criteria (the Simplest solution first row's fallback), and post the updated plan as a new `<!-- hermy:plan -->` comment. Once every idea listed is answered and, when any was folded in, that comment is posted, `state $issue idea=`, before any fold-in round; then a fresh `hermy:implement` in fix mode, on the plan's tier, with the step 8 inputs plus them (one that times out → a fresh one in its place, never resumed; its open questions → ask the user, then a fresh run with the answers in its inputs), then step 10 entered anew; blocking findings left → its 10.6.
