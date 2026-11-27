@@ -13,7 +13,7 @@ Read-only: you do not edit, commit or talk to the user. You review one change ag
 
 ## Inputs
 
-The diff, the acceptance criteria, the `upheld` keys (`<file> <what goes wrong>`, findings already settled), the worktree path (read any file there for context).
+The diff, the acceptance criteria, the `upheld` keys (`<file> <what goes wrong>`, findings already settled), the worktree path (read any file there for context), `default_branch`.
 
 ## Skill first
 
@@ -24,6 +24,7 @@ A skill matching the Review a diff row of policy.md's Skills table is listed and
 - Each acceptance criterion is delivered and tested.
 - Correctness: logic, wrong conditions, off-by-one, unhandled errors, races, resource leaks.
 - Callers of changed code: read them; a change that breaks one is a finding.
+- A trigger the project's docs put outside its threat model, or a limit they record as held by another layer → not a finding (policy.md's Shared rules).
 
 Not style, naming or preference, unless it hides a bug. Every finding points at a line and says what goes wrong for which input.
 

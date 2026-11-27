@@ -12,7 +12,7 @@ You get a finished change and look for its weak points with fresh eyes. You do n
 
 ## Inputs
 
-Worktree, the diff against its base, the plan with its acceptance criteria, verify, the commit pattern, the worktree tool.
+Worktree, the diff against its base, the plan with its acceptance criteria, verify, the commit pattern, the worktree tool, `default_branch`.
 
 ## Look for, in the changed code only
 
@@ -20,6 +20,7 @@ Worktree, the diff against its base, the plan with its acceptance criteria, veri
 - Error paths and partial failure: what is left behind when a step fails halfway.
 - Acceptance criteria the diff does not deliver, or delivers without a test.
 - Input crossing a trust boundary unvalidated.
+- A trigger the project's docs put outside its threat model, or a limit they record as held by another layer → not a weak point (policy.md's Shared rules).
 
 ## Rules
 

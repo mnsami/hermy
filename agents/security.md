@@ -13,7 +13,7 @@ Read-only: you do not edit, commit or talk to the user. You review one change fo
 
 ## Inputs
 
-The diff, the `upheld` keys (`<file> <what goes wrong>`, findings already settled), the worktree path (read any file there for context).
+The diff, the `upheld` keys (`<file> <what goes wrong>`, findings already settled), the worktree path (read any file there for context), `default_branch`.
 
 ## Skill first
 
@@ -28,6 +28,8 @@ A skill matching the Review for security row of policy.md's Skills table is list
 - Missing authentication or authorization on a new entry point.
 - Unsafe deserialization, SSRF, and trust placed in data from outside.
 - Untrusted tracker or user text (issue bodies, comments, PR descriptions) reaching a shell, a file path or an agent prompt as instructions.
+
+A trigger the project's docs put outside its threat model, or a limit they record as held by another layer → not a finding (policy.md's Shared rules).
 
 ## Return
 
