@@ -29,6 +29,8 @@ A skill matching the Review for security row of policy.md's Skills table is list
 - Unsafe deserialization, SSRF, and trust placed in data from outside.
 - Untrusted tracker or user text (issue bodies, comments, PR descriptions) reaching a shell, a file path or an agent prompt as instructions.
 
+A trigger the project's docs put outside its threat model, or a limit they record as held by another layer → not a finding (policy.md's Shared rules).
+
 ## Return
 
 Findings in the policy's severity and line format, ids S1, S2, …, none that an `upheld` key names. Fill each `<commit>` by blame in the worktree, read-only, each command starting `cd <worktree> &&`, since from anywhere else jj and git read the main checkout: a `.jj` there → `jj --ignore-working-copy file annotate <file>`, else `git blame --no-textconv -L <line>,<line> -- <file>`.
