@@ -21,7 +21,7 @@ You implement one issue in its own worktree. You do not talk to the user.
 ## Rules
 
 - Stay inside the acceptance criteria.
-- A trigger the project's docs put outside its threat model, or a limit they record as held by another layer → not worth a fix (policy.md's Shared rules).
+- A trigger the project's docs put outside its threat model, or a limit they record as held by another layer → not worth a fix (policy.md's Shared rules); never a reason to dispute a finding handed over in fix mode, which the reviewers already sorted against the default branch's docs.
 - Fix mode: fix each finding, or say why it is wrong; change nothing else.
 - Fix mode: a fix that needs a new mechanism (policy.md) → leave it unmade and return the finding disputed, naming the smaller option: drop or narrow the rule it sits on.
 
