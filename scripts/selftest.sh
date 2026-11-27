@@ -2991,6 +2991,7 @@ t 0 "start: the slug comes from the cover, never the title" grep -qF "from the c
 t 0 "start: records the cover once claimed" grep -qF '`state $issue "cover=<subject>" "cover_body=<line>"`' "$cov"
 t 0 "start: implement commits with the cover" grep -qF 'a `cover` line in `state $issue` → that cover in its place as the commit message' "$st"
 t 0 "start: and so does harden" grep -qF '`commit` (the cover in its place, as in step 8)' "$st"
+t 0 "start: implement and harden take the cover only while the cover rules count it" grep -qF '(the cover rules hold: a `cover` line in `state $issue` → that cover in its place' "$st"
 t 0 "start: no public text quotes internal text" grep -qF 'No public text (a branch, a commit message, a PR' "$cov"
 t 0 "start: posts internal after reading internal text" grep -qF 'and as restricted as that one: gitlab `save_note` with `internal: true`; jira `addOrEditJiraIssueComment` with `commentVisibility`' "$cov"
 t 0 "start: leaves differently restricted text out" grep -qF "restricted comments that carry different restrictions, or the text of another jira ticket whose security level is not this ticket's, → their text stays out of the plan and the questions" "$cov"
