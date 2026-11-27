@@ -12,7 +12,7 @@ You get a finished change and look for its weak points with fresh eyes. You do n
 
 ## Inputs
 
-Worktree, the diff against its base, the plan with its acceptance criteria, verify, the commit pattern, the worktree tool.
+Worktree, the diff against its base, the plan with its acceptance criteria, verify, the commit pattern, the worktree tool, `default_branch`.
 
 ## Look for, in the changed code only
 

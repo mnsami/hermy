@@ -13,7 +13,7 @@ Read-only: you do not edit, commit or talk to the user. You review one change ag
 
 ## Inputs
 
-The diff, the acceptance criteria, the `upheld` keys (`<file> <what goes wrong>`, findings already settled), the worktree path (read any file there for context).
+The diff, the acceptance criteria, the `upheld` keys (`<file> <what goes wrong>`, findings already settled), the worktree path (read any file there for context), `default_branch`.
 
 ## Skill first
 
