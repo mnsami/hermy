@@ -81,7 +81,7 @@ Each layer has the same rows. A row is left out when it does not apply.
 - The edit guard, the tripwire and the config lock are Claude Code and Copilot CLI hooks ([per host](#per-host)).
   Another agent that runs the skills from `~/.hermy` (Codex, Cursor, Gemini CLI, Antigravity CLI)
   never has them. It gets only the git hooks, branch protection and the PR check.
-- Each shell hook leaves a mark for its session. `/hermy:start` looks for it before it creates or claims the worktree.
+- `snap`, the hook before each shell command, leaves a mark for its session. `/hermy:start` looks for it before it creates or claims the worktree.
   With none, it prints `hooks: off` and the causes, and asks you before it claims the issue.
 - That check reads the session's own mark. A session with its hooks off is caught only when it runs `/hermy:start`
   itself, and a shell command can make the mark. It is a check, not a guardrail.
@@ -119,6 +119,10 @@ On Copilot CLI:
 - A FIFO at a `.git`'s own `HEAD`, `commondir` or `config` on the way up from where the session opened, or at the
   common dir's `config`, is refused at once by every hook, on Claude Code too, before git runs. So is a `commondir`
   or `config` there over 16 MiB, which git would read whole.
+- A `commondir` in the main checkout's `.git`, which git never writes there, would point git at another repository's
+  config, whose `core.fsmonitor` can run a program outside the sandbox. `guard`, `snap` and `trip` refuse every edit
+  and shell command, in either guard mode, before any git call, and name the file to remove by hand.
+  A linked worktree's own `commondir` is by design.
 - A hook that Copilot gives no absolute project directory refuses the call, and the tripwire reports the command:
   run from the plugin's directory, it would find no project and check nothing.
 - An `apply_patch` over 1 MiB is refused unread, since reading one could outlast the edit guard's timeout. Split it.
@@ -172,7 +176,7 @@ On Copilot CLI:
 - With no `bash` left, every call is refused.
 - With no `git` left, every shell command is refused.
   So is every shell command with no `jj`, where the project holds a `.jj`.
-- With no `jq`, every edit is refused.
+- With no `jq`, every edit is refused once the project is onboarded.
 - `hermy doctor` prints the `bash` the hooks run.
 - Set in a `.claude/settings.json` or `settings.local.json` `env`, these still reach the hooks:
   `LD_PRELOAD`, `LD_AUDIT`, `TMPDIR`, `JJ_CONFIG` and an absolute `PATH` entry outside the project.
@@ -234,8 +238,10 @@ A `PreToolUse` hook on Edit, Write and NotebookEdit.
   - a hard-linked file other than `.hermy.yml`, pnpm's store links in `node_modules` included;
   - a file in the hermy install the hooks run from, where an edit would change or turn off every hook after it,
     unless the install lies in the project (`claude --plugin-dir .` in hermy's own repository);
-  - a path it cannot read or follow: over 4096 bytes, through `/proc` or macOS's `/.vol`, or one that is
+  - a path it cannot read or follow: over 4096 bytes, through `/proc`, `/dev/fd` or macOS's `/.vol`, `/.nofollow` or
+    `/.resolve`, one with more than 40 links, a `..` after a missing directory or a walk past 5 seconds, or one that is
     Windows-style (a drive letter, a backslash, a leading `//`);
+  - an edit naming more than 64 paths, or one whose paths are not all checked within 8 seconds;
   - every edit, where bash itself runs on native Windows;
   - every edit in a project whose path holds a backslash, on macOS or Linux;
   - every edit, when the config was removed while a claim lock is still there (see Config lock).
@@ -309,11 +315,12 @@ What it does with that:
 - **Always refuses:** every shell command, in either guard mode, when:
   - `HOME` or `XDG_CONFIG_HOME` lies at or under the project, since git and jj read `core.fsmonitor` from there;
   - no `git` is left on the hooks' `PATH`, or no `jj` where the project holds a `.jj`;
-  - the config is over 64 KiB (see Config lock);
+  - the live config is over 64 KiB (see Config lock);
   - `.git/worktrees` holds more entries than hermy can check in 10 seconds.
     Remove the ones no worktree uses. `git worktree prune` drops those whose worktree is gone.
   - a `gitdir`, `HEAD`, `locked` or `commondir` under `.git/worktrees/<id>/` that is not a plain file,
     links followed, which git would wait on forever.
+    The one exception is a `HEAD` link whose text starts with `refs/`, which `core.preferSymlinkRefs` writes.
     Remove it, or replace it with a plain file, by hand.
   - the config was removed while a claim lock is still there.
 - **Doesn't catch:**
@@ -367,7 +374,7 @@ The long lists are on [Enforcement limits](enforcement-limits.md):
   That means the config was removed, not never written.
   The one exception is a Write of the config, which asks you first.
   The message names what is missing, what was left, and the two ways out.
-  Also every shell command while `.hermy.yml` is over 64 KiB, which is more than hermy keeps a copy of.
+  Also every shell command while the live config is over 64 KiB, which is more than hermy keeps a copy of.
   `/hermy:config` brings it under.
 - **Doesn't catch:**
   - A background command's changes. The config is compared around each command alone,
