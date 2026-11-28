@@ -111,7 +111,7 @@ Worked examples, each checked against enforcement.md:
   That remainder is a bug already recorded ([per host](enforcement.md#per-host)). Do not file it again.
 - **A `commondir` written into the project's `.git`.** In model: the sandbox does not protect it. It would point git
   at another repository's config. `guard`, `snap` and `trip` refuse before any git call and name the file to remove
-  by hand. Held locally, so no bug. enforcement.md does not describe this refusal; CLAUDE.md's guardrails section does.
+  by hand. Held locally, so no bug. [enforcement.md](enforcement.md#per-host) describes this refusal.
 - **A planted `bash` on `PATH`.** In model: a command can write `.venv/bin/bash`. The hooks drop every `PATH` entry
   inside the project before they look up `bash`, `git`, `jq` or `jj`
   ([bash and `PATH`](enforcement.md#bash-and-path)). Held locally, so no bug.
