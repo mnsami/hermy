@@ -5,6 +5,7 @@ hermy is a Claude Code plugin (and its own single-plugin marketplace). There is 
 - `skills/*/SKILL.md`: nine skills (`onboard`, `next`, `start`, `ship`, `triage`, `config`, `migrate`, `drop`, `refresh`)
 - `agents/{context,simplest,implement,harden,review,security}.md`: the sub-agent briefs `start` delegates to
 - `skills/start/references/policy.md`: shared brief rules, read first by every brief
+- `skills/start/references/{cover,resume,handoff,ideas}.md`: the references `start` reads on demand, each named once in its `SKILL.md` on the line carrying its condition
 - `bin/hermy`: the core, holding every mechanic
 - `scripts/*.sh`: Claude Code shims around the core
 - `hooks/hooks.json`: the guardrails
