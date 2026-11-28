@@ -252,7 +252,7 @@ A `PreToolUse` hook on Edit, Write and NotebookEdit.
 - **When it blocks you:** run `/hermy:start <issue>` and edit under `.worktrees/<issue>/`.
   For a claim another session holds, `/hermy:start` offers to take it over once you say so.
   For a crash or timeout, see "When hooks fail or are off".
-- **Needs:** `jq`. Without a working one, or for a call that names no path it can read, every edit is refused.
+- **Needs:** `jq`. Without a working one, or for a call that names no path it can read, every edit is refused once the project is onboarded.
 
 ### Claims
 
@@ -320,7 +320,7 @@ What it does with that:
     Remove the ones no worktree uses. `git worktree prune` drops those whose worktree is gone.
   - a `gitdir`, `HEAD`, `locked` or `commondir` under `.git/worktrees/<id>/` that is not a plain file,
     links followed, which git would wait on forever.
-    The one exception is a `HEAD` link whose text starts with `refs/`, which `core.preferSymlinkRefs` writes.
+    The one exception is a `HEAD` link that reaches nothing and whose text starts with `refs/`, which `core.preferSymlinkRefs` writes.
     Remove it, or replace it with a plain file, by hand.
   - the config was removed while a claim lock is still there.
 - **Doesn't catch:**
