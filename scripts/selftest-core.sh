@@ -1346,6 +1346,11 @@ t 0 "githook: start points core.hooksPath at the absolute hooks dir" test "$(git
 t 0 "githook: and writes both hooks executable" test -x "$hooks/pre-commit" -a -x "$hooks/pre-push"
 # A verb run from stdin has no path of its own; start, whose hooks run hermy by it, says so.
 t 0 "a verb runs from stdin" sh -c "bash -s state 1 < '$here/bin/hermy'"
+# A link planted at state.tmp is not written through: state writes a new file there, as refresh's flag does.
+echo keep > "$tmp/st-target"; ln -s "$tmp/st-target" .git/hermy/1/state.tmp
+t 0 "state: writes past a link planted at state.tmp" run state 1 phase=linked
+t 0 "state: and leaves the link's target as it was" test "$(cat "$tmp/st-target")" = keep
+t 0 "state: and sets the key in state" grep -qx 'phase=linked' .git/hermy/1/state
 # macOS ships bash 3.2 as /bin/bash (5.x elsewhere): every script must parse there, and a [!a-z] class must not pass upper case in a UTF-8 locale
 if [ -x /bin/bash ]; then
   for f in "$here"/scripts/*.sh "$here/bin/hermy" "$here/get.sh"; do t 0 "/bin/bash: ${f#$here/} parses" /bin/bash -n "$f"; done

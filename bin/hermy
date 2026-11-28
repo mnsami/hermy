@@ -2676,8 +2676,8 @@ $bad" ;;
     # by its full name: a local tag or branch named origin/$base comes first
     d=$(git rev-parse -q --verify "refs/remotes/origin/$base^{commit}") || die "origin/$base is missing here, so $wt was not brought up to date: fetch origin, or set default_branch with /hermy:config"
     f=".git/hermy/$issue/state"
-    # flag sets needs_rebase=$d, flag "" clears it; a new file (set -C), so a
-    # link planted at state.tmp is never written through
+    # flag sets needs_rebase=$d, flag "" clears it; rm -f clears the name and
+    # noclobber (set -C) refuses a regular file or a link to one at state.tmp
     flag() { rm -f "$f.tmp" && (set -C; { grep -v '^needs_rebase=' "$f" 2>/dev/null; [ -z "$1" ] || echo "needs_rebase=$1"; } > "$f.tmp") && mv "$f.tmp" "$f" || die "could not write needs_rebase to $f"; }
     # git's merge writes over an ignored file where it brings one (merge-ort
     # keeps --no-overwrite-ignore to fast-forwards; a modify/delete conflict's
@@ -2835,7 +2835,7 @@ $bad" ;;
       if [ -n "$add" ]; then
         printf '%s=%s\n' "$k" "$v" >> "$f" || die "could not write $f"
       else
-        { grep -v "^$k=" "$f" 2>/dev/null; printf '%s=%s\n' "$k" "$v"; } > "$f.tmp" && mv "$f.tmp" "$f" || die "could not write $f"
+        rm -f "$f.tmp" && (set -C; { grep -v "^$k=" "$f" 2>/dev/null; printf '%s=%s\n' "$k" "$v"; } > "$f.tmp") && mv "$f.tmp" "$f" || die "could not write $f"
       fi
     done ;;
   *) die "usage: $self start|create <issue> <branch> [base-issue] | claim <issue> [--take] | ship|push <issue> [message] [-- <path>...] | state <issue> [key=value ...] | verify <issue> | diff <issue> | log <issue> <path>... | mark <issue> [digest] | sweep | drop <issue> [--force] | refresh <issue> | status | config | detect | exclude answers|config | forget answers | migrate [records] | doctor | guard | githook pre-commit|pre-push" ;;
